@@ -267,7 +267,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
       {/* CIPA Header Banner */}
       <div className="mb-6 rounded-3xl bg-gradient-to-br from-blue-600 to-blue-700 p-6 sm:p-8 border border-blue-500/15 shadow-sm">
         <h1 className="font-sans text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
-          SAC CIPA - Canal de Comunicação Ativo
+          Sistema de Atendimento ao Colaborador
         </h1>
         <p className="text-blue-50 text-sm leading-relaxed max-w-2xl">
           Use este formulário para enviar dúvidas, sugestões, críticas ou apontamentos de riscos diretamente para a Mesa Diretora da CIPA. Seu relato será apreciado com total zelo.

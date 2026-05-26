@@ -4,7 +4,8 @@ import {
   Users, ClipboardList, Shield, ShieldAlert, 
   Trash2, Send, Check, AlertCircle, RefreshCw, 
   MessageSquare, UserPlus, Filter, FileText, Calendar, Tag, MapPin, 
-  Download, BarChart2, CheckCircle2, Clock, Plus, Edit3
+  Download, BarChart2, CheckCircle2, Clock, Plus, Edit3,
+  Palette, UploadCloud, RotateCcw
 } from 'lucide-react';
 import { 
   collection, doc, onSnapshot, setDoc, 
@@ -13,15 +14,23 @@ import {
 import { db, handleFirestoreError } from '../firebase';
 import { Registration, DbAdmin, OperationType } from '../types';
 import { AREAS_LIST } from '../areas';
+import CipaLogo from './CipaLogo';
 
 interface AdminPanelProps {
   currentUserEmail: string;
   isSimulated?: boolean;
+  customLogo: string | null;
+  setCustomLogo: (logo: string | null) => void;
 }
 
-export default function AdminPanel({ currentUserEmail, isSimulated = false }: AdminPanelProps) {
+export default function AdminPanel({ 
+  currentUserEmail, 
+  isSimulated = false,
+  customLogo,
+  setCustomLogo
+}: AdminPanelProps) {
   // Tabs
-  const [activeTab, setActiveTab] = useState<'registros' | 'areas' | 'admins'>('registros');
+  const [activeTab, setActiveTab] = useState<'registros' | 'areas' | 'admins' | 'branding'>('registros');
 
   // Loading states
   const [loadingRegistrations, setLoadingRegistrations] = useState<boolean>(true);
@@ -36,6 +45,44 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
   // Errors / Success Messages
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Custom Confirmation Dialog state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+    confirmText?: string;
+    cancelText?: string;
+    isDanger?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const requestConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    isDanger = false,
+    confirmText = "Confirmar",
+    cancelText = "Cancelar"
+  ) => {
+    setConfirmConfig({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        await onConfirm();
+      },
+      confirmText,
+      cancelText,
+      isDanger
+    });
+  };
 
   // Dynamic operating areas input states
   const [newAreaName, setNewAreaName] = useState<string>('');
@@ -297,37 +344,42 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
   };
 
   // Delete registration trigger
-  const handleDeleteRegistration = async (id: string) => {
-    if (!confirm("Tem certeza absoluta de que deseja excluir permanentemente este registro da base de dados? Esta operação é irreversível.")) {
-      return;
-    }
+  const handleDeleteRegistration = (id: string) => {
+    requestConfirm(
+      "Excluir Relato",
+      "Tem certeza absoluta de que deseja excluir permanentemente este registro da base de dados? Esta operação é irreversível.",
+      async () => {
+        setErrorMsg(null);
+        setSuccessMsg(null);
 
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      if (isSimulated) {
-        const stored = localStorage.getItem('cipa_mock_registrations');
-        let list: Registration[] = stored ? JSON.parse(stored) : [];
-        list = list.filter(item => item.id !== id);
-        localStorage.setItem('cipa_mock_registrations', JSON.stringify(list));
-        setRegistrations(list);
-        setSelectedReg(null);
-        setSuccessMsg("Relato (Simulado) excluído permanentemente localmente.");
-      } else {
-        await deleteDoc(doc(db, 'registrations', id));
-        setSelectedReg(null);
-        setSuccessMsg("Relato excluído permanentemente com sucesso.");
-      }
-      setTimeout(() => setSuccessMsg(null), 3500);
-    } catch (err) {
-      console.error(err);
-      try {
-        handleFirestoreError(err, OperationType.DELETE, `registrations/${id}`);
-      } catch (finalError: any) {
-        setErrorMsg(`Erro ao excluir registro: ${finalError.message}`);
-      }
-    }
+        try {
+          if (isSimulated) {
+            const stored = localStorage.getItem('cipa_mock_registrations');
+            let list: Registration[] = stored ? JSON.parse(stored) : [];
+            list = list.filter(item => item.id !== id);
+            localStorage.setItem('cipa_mock_registrations', JSON.stringify(list));
+            setRegistrations(list);
+            setSelectedReg(null);
+            setSuccessMsg("Relato (Simulado) excluído permanentemente localmente.");
+          } else {
+            await deleteDoc(doc(db, 'registrations', id));
+            setSelectedReg(null);
+            setSuccessMsg("Relato excluído permanentemente com sucesso.");
+          }
+          setTimeout(() => setSuccessMsg(null), 3500);
+        } catch (err) {
+          console.error(err);
+          try {
+            handleFirestoreError(err, OperationType.DELETE, `registrations/${id}`);
+          } catch (finalError: any) {
+            setErrorMsg(`Erro ao excluir registro: ${finalError.message}`);
+          }
+        }
+      },
+      true,
+      "Excluir",
+      "Cancelar"
+    );
   };
 
   // Add new admin
@@ -389,49 +441,54 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
   };
 
   // Delete nominated admin
-  const handleDeleteAdmin = async (email: string) => {
+  const handleDeleteAdmin = (email: string) => {
     if (email === 'jacksonbjr@gmail.com') {
-      alert("Acesso Negado: O e-mail Jacksonbjr@gmail.com é a conta Master e nunca poderá ser desmembrado ou excluído.");
+      setErrorMsg("Acesso Negado: O e-mail Jacksonbjr@gmail.com é a conta Master e nunca poderá ser desmembrado ou excluído.");
       return;
     }
 
     if (email === currentUserEmail.toLowerCase()) {
-      alert("Operação bloqueada: Você não pode remover a si próprio como administrador para evitar lockouts.");
+      setErrorMsg("Operação bloqueada: Você não pode remover a si próprio como administrador para evitar lockouts.");
       return;
     }
 
-    if (!confirm(`Deseja revogar os privilégios de administrador do email [ ${email} ]?`)) {
-      return;
-    }
+    requestConfirm(
+      "Revogar Administrador",
+      `Deseja revogar os privilégios de administrador do email [ ${email} ]?`,
+      async () => {
+        setErrorMsg(null);
+        setSuccessMsg(null);
 
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      if (isSimulated) {
-        const stored = localStorage.getItem('cipa_mock_admins');
-        let list: DbAdmin[] = stored ? JSON.parse(stored) : [];
-        list = list.filter(adm => adm.email !== email);
-        localStorage.setItem('cipa_mock_admins', JSON.stringify(list));
-        setAdminsList(list.filter(adm => adm.id !== 'jacksonbjr@gmail.com'));
-        setSuccessMsg(`[Simulado] Privilégios de administrador revogados para ${email}.`);
-      } else {
-        await deleteDoc(doc(db, 'admins', email));
-        setSuccessMsg(`Privilégios de administrador revogados para ${email}.`);
-      }
-      setTimeout(() => setSuccessMsg(null), 4000);
-    } catch (err) {
-      console.error(err);
-      if (isSimulated) {
-        setErrorMsg("Erro ao revogar administrador simulado.");
-      } else {
         try {
-          handleFirestoreError(err, OperationType.DELETE, `admins/${email}`);
-        } catch (finalError: any) {
-          setErrorMsg(`Revogação recusada pelo banco: ${finalError.message}`);
+          if (isSimulated) {
+            const stored = localStorage.getItem('cipa_mock_admins');
+            let list: DbAdmin[] = stored ? JSON.parse(stored) : [];
+            list = list.filter(adm => adm.email !== email);
+            localStorage.setItem('cipa_mock_admins', JSON.stringify(list));
+            setAdminsList(list.filter(adm => adm.id !== 'jacksonbjr@gmail.com'));
+            setSuccessMsg(`[Simulado] Privilégios de administrador revogados para ${email}.`);
+          } else {
+            await deleteDoc(doc(db, 'admins', email));
+            setSuccessMsg(`Privilégios de administrador revogados para ${email}.`);
+          }
+          setTimeout(() => setSuccessMsg(null), 4000);
+        } catch (err) {
+          console.error(err);
+          if (isSimulated) {
+            setErrorMsg("Erro ao revogar administrador simulado.");
+          } else {
+            try {
+              handleFirestoreError(err, OperationType.DELETE, `admins/${email}`);
+            } catch (finalError: any) {
+              setErrorMsg(`Revogação recusada pelo banco: ${finalError.message}`);
+            }
+          }
         }
-      }
-    }
+      },
+      true,
+      "Revogar",
+      "Cancelar"
+    );
   };
 
   // Add Dynamic Area
@@ -519,77 +576,210 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
   };
 
   // Delete Dynamic Area
-  const handleDeleteArea = async (id: string, name: string) => {
-    if (!confirm(`Tem certeza de que deseja remover permanentemente o setor "${name}"? Novos relatos não poderão selecioná-lo.`)) {
-      return;
-    }
+  const handleDeleteArea = (id: string, name: string) => {
+    requestConfirm(
+      "Remover Setor",
+      `Tem certeza de que deseja remover permanentemente o setor "${name}"? Novos relatos não poderão selecioná-lo.`,
+      async () => {
+        setErrorMsg(null);
+        setSuccessMsg(null);
 
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      if (isSimulated) {
-        const stored = localStorage.getItem('cipa_mock_areas');
-        let list = stored ? JSON.parse(stored) : [];
-        list = list.filter((a: any) => a.id !== id);
-        localStorage.setItem('cipa_mock_areas', JSON.stringify(list));
-        setAreasList(list.sort((a: any, b: any) => a.name.localeCompare(b.name)));
-        setSuccessMsg(`[Simulado] Setor "${name}" removido localmente.`);
-      } else {
-        await deleteDoc(doc(db, 'areas', id));
-        setSuccessMsg(`Setor "${name}" removido com sucesso.`);
-      }
-      setTimeout(() => setSuccessMsg(null), 3500);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(`Erro ao remover setor: ${err.message}`);
-    }
+        try {
+          if (isSimulated) {
+            const stored = localStorage.getItem('cipa_mock_areas');
+            let list = stored ? JSON.parse(stored) : [];
+            list = list.filter((a: any) => a.id !== id);
+            localStorage.setItem('cipa_mock_areas', JSON.stringify(list));
+            setAreasList(list.sort((a: any, b: any) => a.name.localeCompare(b.name)));
+            setSuccessMsg(`[Simulado] Setor "${name}" removido localmente.`);
+          } else {
+            await deleteDoc(doc(db, 'areas', id));
+            setSuccessMsg(`Setor "${name}" removido com sucesso.`);
+          }
+          setTimeout(() => setSuccessMsg(null), 3500);
+        } catch (err: any) {
+          console.error(err);
+          setErrorMsg(`Erro ao remover setor: ${err.message}`);
+        }
+      },
+      true,
+      "Remover",
+      "Cancelar"
+    );
   };
 
   // Seed / Import preset areas
-  const handleImportPresetAreas = async () => {
-    if (!confirm(`Deseja carregar a lista padrão de ${AREAS_LIST.length} setores industriais e administrativos históricos?`)) {
+  const handleImportPresetAreas = () => {
+    requestConfirm(
+      "Importar Setores Padrão",
+      `Deseja carregar a lista padrão de ${AREAS_LIST.length} setores industriais e administrativos históricos?`,
+      async () => {
+        setSavingArea(true);
+        setErrorMsg(null);
+        setSuccessMsg(null);
+
+        try {
+          let imported = 0;
+          if (isSimulated) {
+            const stored = localStorage.getItem('cipa_mock_areas');
+            let list = stored ? JSON.parse(stored) : [];
+            for (const name of AREAS_LIST) {
+              if (!list.some((a: any) => a.name.toLowerCase() === name.toLowerCase())) {
+                list.push({ id: `area_${Date.now()}_${Math.random()}`, name });
+                imported++;
+              }
+            }
+            localStorage.setItem('cipa_mock_areas', JSON.stringify(list));
+            setAreasList(list.sort((a: any, b: any) => a.name.localeCompare(b.name)));
+            setSuccessMsg(`[Simulado] Importação concluída! ${imported} setores novos inseridos localmente.`);
+          } else {
+            for (const name of AREAS_LIST) {
+              if (!areasList.some(a => a.name.toLowerCase() === name.toLowerCase())) {
+                const areaId = doc(collection(db, 'areas')).id;
+                await setDoc(doc(db, 'areas', areaId), {
+                  name,
+                  createdAt: serverTimestamp()
+                });
+                imported++;
+              }
+            }
+            setSuccessMsg(`Importação concluída! ${imported} setores novos foram inseridos no banco.`);
+          }
+          setTimeout(() => setSuccessMsg(null), 4000);
+        } catch (err: any) {
+          console.error(err);
+          setErrorMsg(`Erro ao importar presets: ${err.message}`);
+        } finally {
+          setSavingArea(false);
+        }
+      },
+      false,
+      "Importar",
+      "Cancelar"
+    );
+  };
+
+  // Logo handlers
+  const compressLogoImage = (file: File, maxWidth: number = 400, maxHeight: number = 400): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions maintaining aspect ratio
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error("Não foi possível carregar o contexto de desenho do canvas."));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Export as PNG for excellent logo quality/transparency support.
+          // 400x400 PNG is typically around 15KB - 40KB, which is extremely safe for Firestore's 1MB limit.
+          try {
+            const base64 = canvas.toDataURL('image/png');
+            resolve(base64);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error("Erro ao carregar a imagem no navegador para compressão."));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error("Erro ao ler o arquivo de imagem do disco."));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // We can accept up to 8MB archives now since we compress them client-side anyway!
+    if (file.size > 8 * 1024 * 1024) {
+      setErrorMsg("O arquivo é grande demais. O tamanho máximo permitido para o arquivo original é de 8MB.");
       return;
     }
 
-    setSavingArea(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
-      let imported = 0;
+      // Compress the image before storing it
+      const compressedBase64 = await compressLogoImage(file);
+
       if (isSimulated) {
-        const stored = localStorage.getItem('cipa_mock_areas');
-        let list = stored ? JSON.parse(stored) : [];
-        for (const name of AREAS_LIST) {
-          if (!list.some((a: any) => a.name.toLowerCase() === name.toLowerCase())) {
-            list.push({ id: `area_${Date.now()}_${Math.random()}`, name });
-            imported++;
-          }
-        }
-        localStorage.setItem('cipa_mock_areas', JSON.stringify(list));
-        setAreasList(list.sort((a: any, b: any) => a.name.localeCompare(b.name)));
-        setSuccessMsg(`[Simulado] Importação concluída! ${imported} setores novos inseridos localmente.`);
+        localStorage.setItem('cipa_custom_logo', compressedBase64);
+        setCustomLogo(compressedBase64);
+        setSuccessMsg("Identidade visual personalizada aplicada localmente com sucesso! (Simulado)");
       } else {
-        for (const name of AREAS_LIST) {
-          if (!areasList.some(a => a.name.toLowerCase() === name.toLowerCase())) {
-            const areaId = doc(collection(db, 'areas')).id;
-            await setDoc(doc(db, 'areas', areaId), {
-              name,
-              createdAt: serverTimestamp()
-            });
-            imported++;
-          }
-        }
-        setSuccessMsg(`Importação concluída! ${imported} setores novos foram inseridos no banco.`);
+        await setDoc(doc(db, 'settings', 'logo'), {
+          logoBase64: compressedBase64,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUserEmail
+        });
+        setCustomLogo(compressedBase64);
+        setSuccessMsg("Logotipo oficial otimizado, atualizado no banco e sincronizado dinamicamente!");
       }
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg(`Erro ao importar presets: ${err.message}`);
-    } finally {
-      setSavingArea(false);
+      console.error("Erro ao salvar logotipo:", err);
+      setErrorMsg(`Não foi possível salvar o logotipo: ${err.message || err}`);
     }
+  };
+
+  const handleResetLogo = () => {
+    requestConfirm(
+      "Redefinir Logotipo",
+      "Deseja remover o logotipo atual e voltar a utilizar o logotipo padrão da CIPA?",
+      async () => {
+        setErrorMsg(null);
+        setSuccessMsg(null);
+
+        try {
+          if (isSimulated) {
+            localStorage.removeItem('cipa_custom_logo');
+            setCustomLogo(null);
+            setSuccessMsg("Logotipo redefinido para o padrão local.");
+          } else {
+            await setDoc(doc(db, 'settings', 'logo'), {
+              logoBase64: null,
+              updatedAt: serverTimestamp(),
+              updatedBy: currentUserEmail
+            });
+            setCustomLogo(null);
+            setSuccessMsg("Logotipo redefinido para o padrão no banco.");
+          }
+          setTimeout(() => setSuccessMsg(null), 3500);
+        } catch (err: any) {
+          console.error("Erro ao redefinir logotipo:", err);
+          setErrorMsg(`Erro ao redefinir: ${err.message}`);
+        }
+      },
+      false,
+      "Redefinir",
+      "Cancelar"
+    );
   };
 
   // Filter conditions
@@ -632,11 +822,11 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800 flex items-center gap-2.5">
-            <Shield className="h-6 w-6 text-blue-600" />
+            <Shield className="h-6 w-6 text-emerald-700" />
             <span>Escritório Digital CIPA</span>
           </h2>
           <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Logado como: <span className="text-blue-600 font-extrabold font-mono">{currentUserEmail}</span>
+            Logado como: <span className="text-emerald-700 font-extrabold font-mono">{currentUserEmail}</span>
           </p>
         </div>
 
@@ -646,7 +836,7 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
             onClick={() => { setActiveTab('registros'); setErrorMsg(null); }}
             className={`flex items-center space-x-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
               activeTab === 'registros'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-105'
+                ? 'bg-emerald-700 text-white shadow-sm shadow-emerald-100'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
             }`}
           >
@@ -658,7 +848,7 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
             onClick={() => { setActiveTab('areas'); setErrorMsg(null); }}
             className={`flex items-center space-x-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
               activeTab === 'areas'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-105'
+                ? 'bg-emerald-700 text-white shadow-sm shadow-emerald-100'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
             }`}
           >
@@ -670,12 +860,24 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
             onClick={() => { setActiveTab('admins'); setErrorMsg(null); }}
             className={`flex items-center space-x-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
               activeTab === 'admins'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-105'
+                ? 'bg-emerald-700 text-white shadow-sm shadow-emerald-100'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-205/50'
             }`}
           >
             <Users className="h-3.5 w-3.5" />
             <span>Gestão Admins ({adminsList.length})</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('branding'); setErrorMsg(null); }}
+            className={`flex items-center space-x-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+              activeTab === 'branding'
+                ? 'bg-emerald-700 text-white shadow-sm shadow-emerald-100'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-205/50'
+            }`}
+          >
+            <Palette className="h-3.5 w-3.5" />
+            <span>Visual & Logo</span>
           </button>
         </div>
       </div>
@@ -1160,7 +1362,7 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
               </div>
 
               <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                Insira o e-mail Google da pessoa (membro associado, eleito ou diretoria) para delegar privilégios integrais de administração do aplicativo Sac CIPA.
+                Insira o e-mail Google da pessoa (membro associado, eleito ou diretoria) para delegar privilégios integrais de administração do aplicativo Sistema de Atendimento ao Colaborador.
               </p>
 
               <form onSubmit={handleAddAdmin} className="space-y-4">
@@ -1240,6 +1442,158 @@ export default function AdminPanel({ currentUserEmail, isSimulated = false }: Ad
             </div>
 
           </motion.div>
+        )}
+
+        {activeTab === 'branding' && (
+          <motion.div
+            key="brandingTab"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-6"
+          >
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-6">
+              <div className="border-b border-slate-100 pb-4">
+                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">
+                  <Palette className="h-5 w-5 text-emerald-700" />
+                  <span>Branding & Identidade Visual</span>
+                </h3>
+                <p className="text-slate-500 text-xs sm:text-sm mt-1">
+                  Gerencie a identidade visual do Sistema de Atendimento ao Colaborador. Faça upload do logotipo oficial da sua empresa ou comissão para customizar a interface para desktop, celulares e a barra do navegador.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                {/* Preview and Description card */}
+                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/60 flex flex-col items-center justify-center space-y-4">
+                  <span className="text-xs font-bold text-slate-500 self-start uppercase tracking-wider">Visualização em Tempo Real</span>
+                  
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md flex flex-col items-center justify-center min-w-[200px] min-h-[200px]">
+                    <CipaLogo customLogo={customLogo} size={110} showText={true} />
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed text-center max-w-[280px]">
+                    {customLogo 
+                      ? "O logotipo personalizado está ativo. Ele foi processado e otimizado para o navegador."
+                      : "Carregado o logotipo padrão CIPA com estética verde de segurança padrão regulamentada pela NR-5."
+                    }
+                  </p>
+                </div>
+
+                {/* Upload and settings form */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
+                      Carregar Logotipo Oficial
+                    </label>
+                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-white hover:border-emerald-500/50 transition-all group relative cursor-pointer">
+                      <input
+                        type="file"
+                        id="logo-file-input"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <UploadCloud className="h-10 w-10 text-slate-400 group-hover:text-emerald-600 transition-colors mb-2" />
+                      <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
+                        Arraste ou clique para enviar
+                      </span>
+                      <span className="text-[10px] text-slate-405 mt-1">
+                        PNG, JPEG, SVG ou GIF (com compressão automática)
+                      </span>
+                    </div>
+                  </div>
+
+                  {customLogo && (
+                    <button
+                      type="button"
+                      onClick={handleResetLogo}
+                      className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Redefinir para Logo Padrão</span>
+                    </button>
+                  )}
+
+                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900 text-[11px] sm:text-xs leading-relaxed space-y-1">
+                    <strong className="font-extrabold flex items-center gap-1">
+                      <Check className="h-4 w-4 shrink-0 text-emerald-700" />
+                      Sincronização em tempo real:
+                    </strong>
+                    <p>
+                      Surgirá no desktop, celulares, e no ícone da aba do navegador (Favicon) instantaneamente para todos os usuários do canal!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Confirmation Modal */}
+      <AnimatePresence>
+        {confirmConfig.isOpen && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            
+            {/* Dialog Card */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="relative w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 z-[1000] overflow-hidden"
+            >
+              {/* Header Icon + Title */}
+              <div className="flex items-start gap-3.5">
+                <div className={`p-3 rounded-full shrink-0 ${confirmConfig.isDanger ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                  {confirmConfig.isDanger ? <ShieldAlert className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-sans font-extrabold text-slate-800 text-base leading-tight">
+                    {confirmConfig.title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed mt-1">
+                    {confirmConfig.message}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
+                >
+                  {confirmConfig.cancelText || "Cancelar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirmConfig.onConfirm) {
+                      confirmConfig.onConfirm();
+                    }
+                  }}
+                  className={`px-4.5 py-2.5 rounded-xl text-xs font-bold text-white transition-all cursor-pointer shadow-sm ${
+                    confirmConfig.isDanger
+                      ? 'bg-red-600 hover:bg-red-700 shadow-red-100'
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-105'
+                  }`}
+                >
+                  {confirmConfig.confirmText || "Confirmar"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

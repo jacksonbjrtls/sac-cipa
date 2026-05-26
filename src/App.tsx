@@ -5,7 +5,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithPopup, GoogleAuthProvider
 } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -22,6 +22,10 @@ export default function App() {
   // Navigation: 'form' | 'tracker' | 'admin'
   const [currentView, setView] = useState<'form' | 'tracker' | 'admin'>('form');
   const [routeProtocolId, setRouteProtocolId] = useState<string>('');
+
+  // Dynamic visual identity (Logo)
+  const [customLogo, setCustomLogo] = useState<string | null>(null);
+  const [loadingLogo, setLoadingLogo] = useState<boolean>(true);
 
   // Firebase states
   const [user, setUser] = useState<User | null>(null);
@@ -177,6 +181,71 @@ export default function App() {
     return () => unsubscribe();
   }, [currentView]);
 
+  // Sync custom logo with Firestore or localStorage on mount
+  useEffect(() => {
+    // Check if we are simulated first
+    const simulated = localStorage.getItem('cipa_is_simulated') === 'true';
+    setIsSimulated(simulated);
+
+    if (simulated) {
+      const savedLogo = localStorage.getItem('cipa_custom_logo');
+      setCustomLogo(savedLogo);
+      setLoadingLogo(false);
+    } else {
+      // Setup dynamic Firestore listener for custom logo settings
+      try {
+        const unsubscribe = onSnapshot(doc(db, 'settings', 'logo'), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data && data.logoBase64) {
+              setCustomLogo(data.logoBase64);
+            } else {
+              setCustomLogo(null);
+            }
+          } else {
+            setCustomLogo(null);
+          }
+          setLoadingLogo(false);
+        }, (err) => {
+          console.warn("Erro ao ler configuração do logo no Firestore, usando local:", err);
+          const savedLogo = localStorage.getItem('cipa_custom_logo');
+          setCustomLogo(savedLogo);
+          setLoadingLogo(false);
+        });
+
+        return () => unsubscribe();
+      } catch (error) {
+        console.error("Erro ao registrar listener de logo:", error);
+        const savedLogo = localStorage.getItem('cipa_custom_logo');
+        setCustomLogo(savedLogo);
+        setLoadingLogo(false);
+      }
+    }
+  }, [isSimulated]);
+
+  // Handle dynamic favicon and document tab bar icon updating
+  useEffect(() => {
+    let faviconUrl = '';
+    if (customLogo) {
+      faviconUrl = customLogo;
+    } else {
+      // Default safety green circle with white cross
+      faviconUrl = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="%23047857"/><path d="M50 20 v60 M20 50 h60" stroke="white" stroke-width="12"/></svg>`;
+    }
+
+    try {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.getElementsByTagName('head')[0].appendChild(link);
+      }
+      link.href = faviconUrl;
+    } catch (e) {
+      console.warn("Favicon update simulated or not supported:", e);
+    }
+  }, [customLogo]);
+
   // Auth Operations
   const checkEmailAuthorized = async (emailStr: string) => {
     const trimmed = emailStr.toLowerCase().trim();
@@ -261,9 +330,12 @@ export default function App() {
           isConfigIssue: true
         });
       } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-login-credentials' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+        const isMaster = email === 'jacksonbjr@gmail.com';
         setLoginMsg({ 
           type: 'error', 
-          text: 'Senha incorreta ou credenciais inválidas. Se você é um admin credenciado e este é seu primeiro acesso, clique em "Definir Nova Senha" abaixo para registrar uma senha.' 
+          text: isMaster 
+            ? 'Atenção Jackson: Como o seu Firebase é totalmente novo e limpo, você ainda não possui um cadastro de senha de e-mail para este projeto. Por favor, clique na opção azul "Definir Nova Senha (1º Acesso)" que fica bem abaixo nesta tela, preencha o seu e-mail jacksonbjr@gmail.com e registre sua nova senha para si. Se preferir, pode também simplesmente clicar no botão "Entrar com o Google" abaixo para fazer o login instantaneamente sem precisar definir senha!' 
+            : 'Senha incorreta ou credenciais inválidas. Se este é seu primeiro acesso neste novo ambiente de comitê CIPA, clique em "Definir Nova Senha (1º Acesso)" abaixo para cadastrar sua nova senha.' 
         });
       } else {
         setLoginMsg({ type: 'error', text: `Falha na autenticação: ${err.message}` });
@@ -473,7 +545,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f1f5f9] text-slate-800 font-sans selection:bg-blue-600 selection:text-white">
+    <div className="flex min-h-screen flex-col bg-[#f1f5f9] text-slate-800 font-sans selection:bg-emerald-700 selection:text-white">
       {/* Real-time Header */}
       <Header
         currentView={currentView}
@@ -489,6 +561,7 @@ export default function App() {
           setLoginMsg(null);
         }}
         onLogout={handleLogout}
+        customLogo={customLogo}
       />
 
       {/* Main Body */}
@@ -503,8 +576,8 @@ export default function App() {
         {checkingAuth ? (
           <div className="flex flex-col items-center justify-center p-20 space-y-4">
             <div className="relative">
-              <div className="h-12 w-12 rounded-full border-t-2 border-b-2 border-blue-600 animate-spin"></div>
-              <ShieldCheck className="h-5 w-5 absolute top-3.5 left-3.5 text-blue-500 shrink-0" />
+              <div className="h-12 w-12 rounded-full border-t-2 border-b-2 border-emerald-700 animate-spin"></div>
+              <ShieldCheck className="h-5 w-5 absolute top-3.5 left-3.5 text-emerald-600 shrink-0" />
             </div>
             <span className="text-xs text-slate-505 font-mono tracking-wider animate-pulse font-medium">Sincronizando credenciais...</span>
           </div>
@@ -519,7 +592,12 @@ export default function App() {
             )}
 
             {currentView === 'admin' && user && isAdmin && (
-              <AdminPanel currentUserEmail={user.email || 'Conta Corporativa'} isSimulated={isSimulated} />
+              <AdminPanel 
+                currentUserEmail={user.email || 'Conta Corporativa'} 
+                isSimulated={isSimulated} 
+                customLogo={customLogo}
+                setCustomLogo={setCustomLogo}
+              />
             )}
 
             {currentView === 'admin' && (!user || !isAdmin) && (
@@ -830,27 +908,6 @@ export default function App() {
                       <ChevronRight className="h-4.5 w-4.5" />
                     </button>
 
-                    <div className="relative flex py-1 items-center">
-                      <div className="flex-grow border-t border-slate-200"></div>
-                      <span className="flex-shrink mx-3 text-slate-400 text-[10px] uppercase font-bold tracking-wider">Ou</span>
-                      <div className="flex-grow border-t border-slate-200"></div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGoogleLogin}
-                      disabled={isAuthPending}
-                      className="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 transition-colors text-slate-700 border border-slate-300 font-bold py-2.5 px-4 rounded-xl text-xs sm:text-sm cursor-pointer shadow-xs"
-                    >
-                      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                      </svg>
-                      <span>Entrar com o Google</span>
-                    </button>
-
                     <div className="flex justify-between items-center text-[10px] text-slate-500 pt-1.5 select-none font-semibold">
                       <span>Não tem senha ainda?</span>
                       <button
@@ -866,27 +923,6 @@ export default function App() {
                     </div>
                   </form>
                 )}
-
-                {/* Simulated Environment Support Tab or Manual Fallback for Popups */}
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-left space-y-3">
-                  <div className="flex items-start gap-2 text-slate-705 text-xs font-bold uppercase tracking-wider">
-                    <Sparkles className="h-4 w-4 text-amber-500 shrink-0 mt-0.5 animate-pulse" />
-                    <span>Ambiente em Sandbox (AI Studio)?</span>
-                  </div>
-                  <p className="text-[11px] text-slate-505 leading-relaxed font-semibold">
-                    Caso esteja visualizando em sandbox iframe e queira testar a Célula de Administração instantaneamente, pode usar o botão rápido alternativo:
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2 pt-1 font-sans">
-                    <button
-                      type="button"
-                      onClick={handleTestLogin}
-                      className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2.5 rounded-xl text-xs transition-all cursor-pointer shadow-sm hover:shadow-md border-0"
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      <span>Acesso de Teste (Bypass)</span>
-                    </button>
-                  </div>
-                </div>
 
                 <div className="pt-2 border-t border-slate-150 flex flex-col gap-3">
                   <button

@@ -33,7 +33,7 @@ export default function Footer() {
             <span>Colaboração e Confidencialidade garantidas à CIPA.</span>
           </div>
           <div>
-            &copy; {new Date().getFullYear()} Sac CIPA. Todos os direitos reservados.
+            &copy; {new Date().getFullYear()} Sistema de Atendimento ao Colaborador. Todos os direitos reservados.
           </div>
         </div>
       </div>

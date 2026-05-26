@@ -1,5 +1,5 @@
 {
-  "name": "Sac CIPA",
+  "name": "Sistema de Atendimento ao Colaborador",
   "description": "Canal de comunicação da CIPA para registrar dúvidas, sugestões, críticas, elogios, condições inseguras e assuntos de meio ambiente.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

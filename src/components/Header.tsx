@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck, LayoutDashboard, Search, FileText, LogOut } from 'lucide-react';
 import { User } from 'firebase/auth';
+import CipaLogo from './CipaLogo';
 
 interface HeaderProps {
   currentView: 'form' | 'tracker' | 'admin';
@@ -9,19 +10,18 @@ interface HeaderProps {
   isAdmin: boolean;
   onLogin: () => void;
   onLogout: () => void;
+  customLogo?: string | null;
 }
 
-export default function Header({ currentView, setView, user, isAdmin, onLogin, onLogout }: HeaderProps) {
+export default function Header({ currentView, setView, user, isAdmin, onLogin, onLogout, customLogo }: HeaderProps) {
   return (
     <header id="app-header" className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 font-sans">
         <div id="logo-section" className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('form')}>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 shadow-md shadow-blue-100">
-            <ShieldCheck className="h-6 w-6 text-white" />
-          </div>
+          <CipaLogo customLogo={customLogo} size={42} />
           <div>
-            <span className="font-sans text-lg font-bold tracking-tight text-slate-800">
-              Sac <span className="text-blue-600 text-bold">CIPA</span>
+            <span className="font-sans text-xs sm:text-sm md:text-base font-extrabold tracking-tight text-slate-800 leading-snug">
+              Sistema de Atendimento ao Colaborador
             </span>
             <span className="hidden sm:inline-block ml-2 text-xs font-mono text-slate-500 border border-slate-200 rounded px-1.5 py-0.5 bg-slate-50">
               Canal de Dúvidas
@@ -35,7 +35,7 @@ export default function Header({ currentView, setView, user, isAdmin, onLogin, o
             onClick={() => setView('form')}
             className={`flex items-center space-x-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all cursor-pointer ${
               currentView === 'form'
-                ? 'bg-blue-50 text-blue-600 font-bold border border-blue-50'
+                ? 'bg-emerald-50 text-emerald-700 font-bold border border-emerald-50'
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
@@ -48,7 +48,7 @@ export default function Header({ currentView, setView, user, isAdmin, onLogin, o
             onClick={() => setView('tracker')}
             className={`flex items-center space-x-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all cursor-pointer ${
               currentView === 'tracker'
-                ? 'bg-blue-50 text-blue-600 font-bold border border-blue-50'
+                ? 'bg-emerald-50 text-emerald-700 font-bold border border-emerald-50'
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
@@ -62,7 +62,7 @@ export default function Header({ currentView, setView, user, isAdmin, onLogin, o
               onClick={() => setView('admin')}
               className={`flex items-center space-x-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all cursor-pointer ${
                 currentView === 'admin'
-                  ? 'bg-blue-50 text-blue-600 font-bold border border-blue-100'
+                  ? 'bg-emerald-50 text-emerald-700 font-bold border border-emerald-100'
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 border border-transparent'
               }`}
             >
@@ -77,7 +77,7 @@ export default function Header({ currentView, setView, user, isAdmin, onLogin, o
             <div className="flex items-center space-x-2">
               <div className="hidden md:flex flex-col items-end text-right">
                 <span className="text-xs font-semibold text-slate-700 max-w-[120px] truncate">{user.displayName || user.email}</span>
-                <span className="text-[10px] text-blue-600 font-mono font-medium">
+                <span className="text-[10px] text-emerald-700 font-mono font-medium">
                   {isAdmin ? 'Administrador' : 'Colaborador'}
                 </span>
               </div>

@@ -14,8 +14,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        ("email" in request.auth.token && request.auth.token.email == "jacksonbjr@gmail.com") ||
-        ("email" in request.auth.token && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))) ||
+        ("email" in request.auth.token && request.auth.token.email.lower() == "jacksonbjr@gmail.com") ||
+        ("email" in request.auth.token && (
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())) ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        )) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -44,7 +47,7 @@ service cloud.firestore {
     // Registration validation helper
     function isValidRegistration(data) {
       return data.keys().hasAll(['agreedToShare', 'dateObservation', 'isIdentified', 'area', 'category', 'info', 'status', 'createdAt']) &&
-             data.keys().size() >= 8 && data.keys().size() <= 13 &&
+             data.keys().size() >= 8 && data.keys().size() <= 16 &&
              data.agreedToShare is bool &&
              data.dateObservation is string && data.dateObservation.size() <= 20 &&
              data.isIdentified is bool &&
@@ -56,11 +59,15 @@ service cloud.firestore {
              data.category is string && data.category.size() <= 200 &&
              data.info is string && data.info.size() <= 10000 &&
              data.status is string && data.status in ['pendente', 'em_analise', 'resolvido', 'arquivado'] &&
-             data.createdAt == request.time &&
+             ((request.method == 'create' && data.createdAt == request.time) || (request.method == 'update' && data.createdAt == resource.data.createdAt)) &&
              // Admin fields (optional on create, verified on write)
              (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 5000)) &&
              (!('respondedBy' in data) || (data.respondedBy is string && data.respondedBy.size() <= 200)) &&
-             (!('respondedAt' in data) || (data.respondedAt is string || data.respondedAt == request.time));
+             (!('respondedAt' in data) || (
+               data.respondedAt is string || 
+               data.respondedAt == request.time || 
+               (request.method == 'update' && 'respondedAt' in resource.data && data.respondedAt == resource.data.respondedAt)
+             ));
     }
 
     // Area validation helper
@@ -68,7 +75,8 @@ service cloud.firestore {
       return data.keys().hasAll(['name', 'createdAt']) &&
              data.keys().size() == 2 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
-             data.createdAt == request.time;
+             ((request.method == 'create' && data.createdAt == request.time) || 
+              (request.method == 'update' && data.createdAt == resource.data.createdAt));
     }
 
     match /admins/{adminId} {
@@ -92,6 +100,11 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidId(areaId) && isValidArea(incoming());
       allow update: if isAdmin() && isValidId(areaId) && isValidArea(incoming());
       allow delete: if isAdmin() && isValidId(areaId);
+    }
+
+    match /settings/{settingId} {
+      allow get: if true;
+      allow write: if isAdmin() && isValidId(settingId);
     }
   }
 }
