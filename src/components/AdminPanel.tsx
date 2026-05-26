@@ -5,7 +5,7 @@ import {
   Trash2, Send, Check, AlertCircle, RefreshCw, 
   MessageSquare, UserPlus, Filter, FileText, Calendar, Tag, MapPin, 
   Download, BarChart2, CheckCircle2, Clock, Plus, Edit3, Activity,
-  Palette, UploadCloud, RotateCcw
+  Palette, UploadCloud, RotateCcw, ExternalLink
 } from 'lucide-react';
 import { 
   collection, doc, onSnapshot, setDoc, 
@@ -2113,64 +2113,64 @@ export default function AdminPanel({
               initial={{ scale: 0.96, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 15 }}
-              className="relative w-full max-w-4xl bg-white border border-slate-300 rounded-3xl p-8 shadow-2xl z-[1000] my-8 space-y-6 overflow-hidden print:p-0 print:border-0 print:shadow-none printable-area"
+              className="relative w-full max-w-4xl bg-white border border-slate-300 rounded-3xl p-5 sm:p-7 shadow-2xl z-[1000] my-4 space-y-4 print:space-y-2.5 overflow-hidden print:p-0 print:border-0 print:shadow-none printable-area"
             >
               {/* Report Header for Eldorado Brazil */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-5 border-b-2 border-slate-900 gap-4">
-                <div className="space-y-1 text-left">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3.5 print:pb-1.5 border-b-2 border-slate-900 gap-4 print:gap-1">
+                <div className="space-y-1 text-left print:space-y-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-600"></span>
-                    <span className="font-mono text-xs font-bold text-slate-500 uppercase tracking-widest">ELDORADO BRASIL CELULOSE</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 print:w-2 print:h-2"></span>
+                    <span className="font-mono text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest print:text-[8px]">ELDORADO BRASIL CELULOSE</span>
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-905 tracking-tight">RELATÓRIO CONSOLIDADO CIPA (NR-5)</h1>
-                  <p className="text-[10px] sm:text-xs text-slate-500">Sistema SAC - Atendimento e Prevenção de Acidentes de Trabalho</p>
+                  <h1 className="text-lg sm:text-xl font-black text-slate-905 tracking-tight print:text-base">RELATÓRIO CONSOLIDADO CIPA (NR-5)</h1>
+                  <p className="text-[10px] sm:text-xs text-slate-500 print:text-[9px]">Sistema SAC - Atendimento e Prevenção de Acidentes de Trabalho</p>
                 </div>
-                <div className="text-left sm:text-right font-mono text-[10px] text-slate-500 space-y-0.5 border-t sm:border-t-0 sm:border-l border-slate-200 pt-3 sm:pt-0 sm:pl-4">
-                  <p><strong>Emissão:</strong> {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
-                  <p><strong>Auditor Responsável:</strong> {currentUserEmail}</p>
-                  <p><strong>Base de Dados:</strong> {isSimulated ? 'Ambiente de Homologação (Simulado)' : 'Produção em Nuvem (SST)'}</p>
+                <div className="text-left sm:text-right font-mono text-[9px] sm:text-[10px] text-slate-500 space-y-0.5 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-4 print:space-y-0 print:pt-0 print:pl-2">
+                  <p className="print:text-[8px]"><strong>Emissão:</strong> {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
+                  <p className="print:text-[8px]"><strong>Auditor Responsável:</strong> {currentUserEmail}</p>
+                  <p className="print:text-[8px]"><strong>Base de Dados:</strong> {isSimulated ? 'Ambiente de Homologação (Simulado)' : 'Produção em Nuvem (SST)'}</p>
                 </div>
               </div>
 
               {/* Quick Summary Grid */}
-              <div className="grid grid-cols-4 gap-4 p-4.5 bg-slate-50 rounded-2xl border border-slate-200">
-                <div className="text-center space-y-0.5">
-                  <span className="text-[9px] font-bold font-mono text-slate-400 uppercase font-mono">Total Relatados</span>
-                  <p className="text-2xl font-extrabold text-slate-800">{dbTotal}</p>
+              <div className="grid grid-cols-4 gap-2.5 sm:gap-4 p-3 sm:p-4 bg-slate-50 rounded-2xl border border-slate-200 print:py-1.5 print:px-2.5 print:gap-1 print:rounded-xl">
+                <div className="text-center space-y-0.5 print:space-y-0">
+                  <span className="text-[9px] font-bold font-mono text-slate-400 uppercase print:text-[8px]">Total Relatados</span>
+                  <p className="text-xl sm:text-2xl font-extrabold text-slate-800 print:text-base">{dbTotal}</p>
                 </div>
-                <div className="text-center space-y-0.5 border-l border-slate-200">
-                  <span className="text-[9px] font-bold font-mono text-yellow-600 uppercase font-mono border-l-0">Pendências de SST</span>
-                  <p className="text-2xl font-extrabold text-yellow-600">{dbPending}</p>
+                <div className="text-center space-y-0.5 border-l border-slate-200 print:space-y-0">
+                  <span className="text-[9px] font-bold font-mono text-yellow-600 uppercase print:text-[8px]">Pendências de SST</span>
+                  <p className="text-xl sm:text-2xl font-extrabold text-yellow-600 print:text-base">{dbPending}</p>
                 </div>
-                <div className="text-center space-y-0.5 border-l border-slate-200">
-                  <span className="text-[9px] font-bold font-mono text-emerald-700 uppercase font-mono border-l-0">Investigações</span>
-                  <p className="text-2xl font-extrabold text-emerald-700">{dbAnalysing}</p>
+                <div className="text-center space-y-0.5 border-l border-slate-200 print:space-y-0">
+                  <span className="text-[9px] font-bold font-mono text-emerald-700 uppercase print:text-[8px]">Investigações</span>
+                  <p className="text-xl sm:text-2xl font-extrabold text-emerald-700 print:text-base">{dbAnalysing}</p>
                 </div>
-                <div className="text-center space-y-0.5 border-l border-slate-200">
-                  <span className="text-[9px] font-bold font-mono text-emerald-500 uppercase font-mono border-l-0 border-r-0">Resolvidos / Arq</span>
-                  <p className="text-2xl font-extrabold text-emerald-500">{dbResolved + dbArchived}</p>
+                <div className="text-center space-y-0.5 border-l border-slate-200 print:space-y-0">
+                  <span className="text-[9px] font-bold font-mono text-emerald-500 uppercase print:text-[8px]">Resolvidos / Arq</span>
+                  <p className="text-xl sm:text-2xl font-extrabold text-emerald-500 print:text-base">{dbResolved + dbArchived}</p>
                 </div>
               </div>
 
               {/* Categories & Sectors side-by-side details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 text-xs print:gap-4 print:my-0.5">
                 {/* Sector analysis */}
-                <div className="space-y-3">
-                  <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1.5 uppercase tracking-wide text-[11px] text-slate-500 text-left">Mapeamento Geográfico de Incidentes</h3>
+                <div className="space-y-2 print:space-y-1">
+                  <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1 uppercase tracking-wide text-[10px] sm:text-[11px] text-slate-500 text-left print:pb-0.5 print:text-[9px]">Mapeamento Geográfico de Incidentes</h3>
                   <table className="w-full text-left">
                     <thead>
                       <tr className="border-b text-slate-450 font-mono text-[9px] font-extrabold uppercase">
-                        <th className="pb-1">Setor / Localização</th>
-                        <th className="pb-1 text-center">Incidências</th>
-                        <th className="pb-1 text-right">Contribuição</th>
+                        <th className="pb-1 print:pb-0.5">Setor / Localização</th>
+                        <th className="pb-1 print:pb-0.5 text-center">Incidências</th>
+                        <th className="pb-1 print:pb-0.5 text-right">Contribuição</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {sectorsStats.slice(0, 5).map((sec) => (
                         <tr key={sec.name} className="text-slate-705">
-                          <td className="py-2 font-semibold text-slate-700">{sec.name}</td>
-                          <td className="py-2 text-center font-mono font-bold text-slate-800">{sec.count}</td>
-                          <td className="py-2 text-right font-mono text-slate-450">{dbTotal > 0 ? Math.round((sec.count/dbTotal)*100) : 0}%</td>
+                          <td className="py-1 sm:py-1.5 print:py-0.5 font-semibold text-slate-700 print:text-[8.5px]">{sec.name}</td>
+                          <td className="py-1 sm:py-1.5 print:py-0.5 text-center font-mono font-bold text-slate-800 print:text-[8.5px]">{sec.count}</td>
+                          <td className="py-1 sm:py-1.5 print:py-0.5 text-right font-mono text-slate-450 print:text-[8.5px]">{dbTotal > 0 ? Math.round((sec.count/dbTotal)*100) : 0}%</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2178,22 +2178,22 @@ export default function AdminPanel({
                 </div>
 
                 {/* Categories analysis */}
-                <div className="space-y-3">
-                  <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1.5 uppercase tracking-wide text-[11px] text-slate-500 text-left">Gravidade por Categoria de Risco</h3>
+                <div className="space-y-2 print:space-y-1">
+                  <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1 uppercase tracking-wide text-[10px] sm:text-[11px] text-slate-500 text-left print:pb-0.5 print:text-[9px]">Gravidade por Categoria de Risco</h3>
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="border-b text-slate-455 font-mono text-[9px] font-extrabold uppercase">
-                        <th className="pb-1">Classificação CIPA</th>
-                        <th className="pb-1 text-center">Contagem</th>
-                        <th className="pb-1 text-right">Percentual</th>
+                      <tr className="border-b text-slate-455 font-mono text-[9px] font-extrabold uppercase format">
+                        <th className="pb-1 print:pb-0.5">Classificação CIPA</th>
+                        <th className="pb-1 print:pb-0.5 text-center">Contagem</th>
+                        <th className="pb-1 print:pb-0.5 text-right">Percentual</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {categoriesStats.slice(0, 5).map((cat) => (
                         <tr key={cat.name} className="text-slate-705">
-                          <td className="py-2 font-semibold text-slate-700 truncate max-w-[160px]">{cat.name}</td>
-                          <td className="py-2 text-center font-mono font-bold text-slate-800">{cat.count}</td>
-                          <td className="py-2 text-right font-mono text-slate-450">{dbTotal > 0 ? Math.round((cat.count/dbTotal)*100) : 0}%</td>
+                          <td className="py-1 sm:py-1.5 print:py-0.5 font-semibold text-slate-700 truncate max-w-[160px] print:text-[8.5px]">{cat.name}</td>
+                          <td className="py-1 sm:py-1.5 print:py-0.5 text-center font-mono font-bold text-slate-800 print:text-[8.5px]">{cat.count}</td>
+                          <td className="py-1 sm:py-1.5 print:py-0.5 text-right font-mono text-slate-450 print:text-[8.5px]">{dbTotal > 0 ? Math.round((cat.count/dbTotal)*100) : 0}%</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2202,23 +2202,23 @@ export default function AdminPanel({
               </div>
 
               {/* Unresolved CIPA action items */}
-              <div className="space-y-3">
-                <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1.5 uppercase tracking-wide text-[11px] text-slate-500 text-left">Filas de Medidas Mitigadoras Recomendadas (Pendente / Em Análise)</h3>
+              <div className="space-y-2 print:space-y-1">
+                <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1 uppercase tracking-wide text-[10px] sm:text-[11px] text-slate-500 text-left print:pb-0.5 print:text-[9px]">Filas de Medidas Mitigadoras Recomendadas (Pendente / Em Análise)</h3>
                 
                 {dashboardFilteredRegs.filter(r => r.status === 'pendente' || r.status === 'em_analise').length === 0 ? (
-                  <p className="text-slate-500 italic text-xs text-center py-4">Excelente! Não há não-conformidades de SST pendentes nesta triagem.</p>
+                  <p className="text-slate-500 italic text-xs text-center py-2 print:py-1 print:text-[9px]">Excelente! Não há não-conformidades de SST pendentes nesta triagem.</p>
                 ) : (
-                  <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1 divide-y divide-slate-150">
+                  <div className="max-h-[140px] print:max-h-none overflow-y-auto space-y-1 sm:space-y-1.5 pr-1 divide-y divide-slate-150">
                     {dashboardFilteredRegs
                       .filter(r => r.status === 'pendente' || r.status === 'em_analise')
                       .slice(0, 5)
                       .map(reg => (
-                        <div key={reg.id} className="pt-2 flex justify-between items-start text-[11px] gap-4">
-                          <div className="space-y-0.5 text-left max-w-[80%]">
-                            <p className="font-bold text-slate-850">[{reg.area}] {reg.category}</p>
-                            <p className="text-slate-500 leading-relaxed italic truncate">"{reg.info}"</p>
+                        <div key={reg.id} className="pt-1 flex justify-between items-start text-[10px] sm:text-[11px] gap-4 print:pt-0.5">
+                          <div className="space-y-0.5 text-left max-w-[80%] print:space-y-0">
+                            <p className="font-bold text-slate-850 print:text-[9px]">[{reg.area}] {reg.category}</p>
+                            <p className="text-slate-500 leading-relaxed italic truncate print:text-[8.5px]">"{reg.info}"</p>
                           </div>
-                          <span className="bg-yellow-105 border border-yellow-200 text-yellow-850 font-mono text-[8px] font-black uppercase px-2 py-0.5 rounded-full shrink-0">
+                          <span className="bg-yellow-105 border border-yellow-200 text-yellow-850 font-mono text-[8px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 print:px-1.5 print:py-0 print:text-[7.5px]">
                             {reg.status === 'pendente' ? 'Aguardando' : 'Em Análise'}
                           </span>
                         </div>
@@ -2228,22 +2228,53 @@ export default function AdminPanel({
               </div>
 
               {/* Formal Validation block */}
-              <div className="pt-8 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-8 text-[11px]">
-                <div className="space-y-1 text-left">
-                  <p className="font-bold text-slate-750 uppercase font-sans">Comissão CIPA Eldorado Brasil</p>
-                  <p className="text-slate-500 leading-relaxed font-sans">Este documento é gerado de forma sistêmica e as ações estão em conformidade com as diretivas regulamentares da NR-5 de Segurança e Medicina do Trabalho.</p>
+              <div className="pt-4 sm:pt-6 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 text-[10px] sm:text-[11px] print:pt-2 print:gap-2">
+                <div className="space-y-0.5 text-left print:space-y-0">
+                  <p className="font-bold text-slate-750 uppercase font-sans print:text-[9px]">Comissão CIPA Eldorado Brasil</p>
+                  <p className="text-slate-500 leading-relaxed font-sans print:text-[8.5px]">Este documento é gerado de forma sistêmica e as ações estão em conformidade com as diretivas regulamentares da NR-5 de Segurança e Medicina do Trabalho.</p>
                 </div>
-                <div className="flex flex-col items-center justify-end space-y-1 pt-6 md:pt-0">
-                  <div className="w-48 border-b border-slate-400"></div>
-                  <p className="font-semibold text-slate-700 font-sans">Comissão de Segurança CIPA / SESMT</p>
+                <div className="flex flex-col items-center justify-end space-y-0.5 pt-4 md:pt-0 print:pt-1">
+                  <div className="w-40 border-b border-slate-400 print:w-32"></div>
+                  <p className="font-semibold text-slate-700 font-sans print:text-[9px] print:mt-1">Comissão de Segurança CIPA / SESMT</p>
                 </div>
               </div>
 
+              {/* Sandbox preview warning for print (iframe detection) */}
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden shadow-xs">
+                  <div className="flex gap-2.5 items-start text-left">
+                    <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <p className="font-extrabold text-amber-950 font-sans">Aviso de Impressão (Modo de Segurança / Iframe)</p>
+                      <p className="text-amber-800 leading-relaxed font-sans">
+                        Por motivos de segurança do navegador na pré-visualização, a impressão direta está restrita. 
+                        Clique para abrir em tela cheia e salvar o seu PDF perfeitamente em um segundo!
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={window.location.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase font-sans tracking-wide px-4 py-2.5 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap active:scale-95 shadow-md"
+                  >
+                    <span>Abrir em Nova Aba</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              )}
+
               {/* Printing guidance / Close CTA */}
-              <div className="flex gap-3 justify-end items-center pt-4 border-t border-slate-100 print:hidden">
+              <div className="flex gap-3 justify-end items-center pt-3 border-t border-slate-100 print:hidden">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    try {
+                      window.print();
+                    } catch (err) {
+                      console.error("Print failed:", err);
+                    }
+                  }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
                 >
                   <Download className="h-4 w-4" />
