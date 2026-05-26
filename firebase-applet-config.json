@@ -1,10 +1,10 @@
 {
-  "projectId": "boreal-cinema-507pf",
-  "appId": "1:1026521649973:web:50964824b74adc0d56b27c",
-  "apiKey": "AIzaSyDFE_XFXcRDXceGD5ooD6dSZfGd50QOqzI",
-  "authDomain": "boreal-cinema-507pf.firebaseapp.com",
+  "projectId": "sac-cipa-firebase",
+  "appId": "1:872407971337:web:6b60d8e836717e47efead8",
+  "apiKey": "AIzaSyAfqmq2jvYCABepTfyozK1YXjv5LMzWoVU",
+  "authDomain": "sac-cipa-firebase.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-d0e1b67f-a60d-4e21-8cd6-f9bd1d625d94",
-  "storageBucket": "boreal-cinema-507pf.firebasestorage.app",
-  "messagingSenderId": "1026521649973",
+  "storageBucket": "sac-cipa-firebase.firebasestorage.app",
+  "messagingSenderId": "872407971337",
   "measurementId": ""
 }

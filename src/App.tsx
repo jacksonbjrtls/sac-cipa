@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   signOut, onAuthStateChanged, User, signInAnonymously,
   signInWithEmailAndPassword, sendPasswordResetEmail,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  signInWithPopup, GoogleAuthProvider
 } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -39,16 +40,29 @@ export default function App() {
   const [loginMsg, setLoginMsg] = useState<{ type: 'success' | 'error' | 'warning', text: string, isConfigIssue?: boolean } | null>(null);
   const [isAuthPending, setIsAuthPending] = useState<boolean>(false);
 
-  // Auto-seed default areas if database is empty (Runs securely once an Admin is identified)
+  // Auto-seed default admin and operating areas if database is empty (Runs securely once an Admin is identified)
   useEffect(() => {
     if (!isAdmin) return;
 
-    const seedAreasIfEmpty = async () => {
+    const seedDatabaseIfEmpty = async () => {
       try {
+        const rootAdminEmail = 'jacksonbjr@gmail.com';
+        const adminDocRef = doc(db, 'admins', rootAdminEmail);
+        const adminSnap = await getDoc(adminDocRef);
+
+        if (!adminSnap.exists()) {
+          console.log("Auto-seeding Master Admin into Firestore as root...");
+          await setDoc(adminDocRef, {
+            email: rootAdminEmail,
+            addedBy: 'SYSTEM_BOOTSTRAP',
+            createdAt: serverTimestamp()
+          });
+        }
+
         const areasCol = collection(db, 'areas');
         const snapshot = await getDocs(areasCol);
         if (snapshot.empty) {
-          console.log("Seeding default areas into Firestore as Admin...");
+          console.log("Auto-seeding default areas into Firestore as Admin...");
           for (const name of AREAS_LIST) {
             const areaId = doc(areasCol).id;
             await setDoc(doc(db, 'areas', areaId), {
@@ -56,13 +70,50 @@ export default function App() {
               createdAt: serverTimestamp()
             });
           }
-          console.log("Seeding completed successfully!");
+          console.log("Seeding of default areas completed successfully!");
+        }
+
+        const regsCol = collection(db, 'registrations');
+        const regsSnapshot = await getDocs(regsCol);
+        if (regsSnapshot.empty) {
+          console.log("Auto-seeding default registrations into Firestore as Admin...");
+          const sampleRegs = [
+            {
+              agreedToShare: true,
+              dateObservation: "25/05/2026",
+              isIdentified: true,
+              name: "Jackson Bernardes",
+              email: "jacksonbjr@gmail.com",
+              phone: "62 99999-9999",
+              area: "Almoxarifado Central",
+              category: "Condição Insegura (Riscos no ambiente/infraestrutura)",
+              info: "Identificado que as fiações elétricas expostas na rampa de carregamento representam risco iminente de faíscas devido à umidade recente. Necessária manutenção elétrica preventiva com urgência.",
+              status: "pendente",
+              createdAt: serverTimestamp()
+            },
+            {
+              agreedToShare: true,
+              dateObservation: "24/05/2026",
+              isIdentified: false,
+              area: "Manutenção Mecânica",
+              category: "Incidente ou Quase Acidente",
+              info: "Quase acidente ocorrido ontem de tarde na desmontagem da bomba principal da área de Caustificação. Uma chave de boca caiu de uma altura de 3m sem uso do cordão de segurança. Ninguém foi atingido, mas o risco de lesão grave era extremo.",
+              status: "em_analise",
+              createdAt: serverTimestamp()
+            }
+          ];
+
+          for (const item of sampleRegs) {
+            const regId = doc(regsCol).id;
+            await setDoc(doc(db, 'registrations', regId), item);
+          }
+          console.log("Seeding of default registrations completed successfully!");
         }
       } catch (err) {
-        console.error("Erro no auto-seeding de setores default como admin:", err);
+        console.error("Erro no auto-seeding do banco de dados:", err);
       }
     };
-    seedAreasIfEmpty();
+    seedDatabaseIfEmpty();
   }, [isAdmin]);
 
   // Monitor Auth state changes
@@ -339,6 +390,48 @@ export default function App() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setLoginMsg(null);
+    setIsAuthPending(true);
+    try {
+      if (isSimulated) {
+        setIsSimulated(false);
+      }
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const emailLower = result.user.email?.toLowerCase().trim() || '';
+
+      // Check if email is authorized (or master account)
+      if (emailLower === 'jacksonbjr@gmail.com') {
+        setIsAdmin(true);
+        setLoginMsg({ type: 'success', text: 'Autenticado via Google com sucesso!' });
+      } else {
+        const adminDocRef = doc(db, 'admins', emailLower);
+        const docSnap = await getDoc(adminDocRef);
+        if (docSnap.exists()) {
+          setIsAdmin(true);
+          setLoginMsg({ type: 'success', text: 'Autenticado via Google com sucesso!' });
+        } else {
+          setIsAdmin(false);
+          await signOut(auth); // Sign out if they are not an authorized admin
+          setLoginMsg({
+            type: 'warning',
+            text: `A conta Google (${emailLower}) não está credenciada como administrador. Acesso negado.`
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("Erro no login Google:", err);
+      if (err.code === 'auth/popup-blocked') {
+        setLoginMsg({ type: 'error', text: 'O popup de login foi bloqueado pelo seu navegador. Por favor, permita popups para este site e tente novamente.' });
+      } else {
+        setLoginMsg({ type: 'error', text: `Erro no login Google: ${err.message}` });
+      }
+    } finally {
+      setIsAuthPending(false);
+    }
+  };
+
   const handleTestLogin = () => {
     setCheckingAuth(true);
     setIsSimulated(true);
@@ -481,21 +574,28 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Step-by-step manual guide if email/password auth provider is disabled in Firebase console */}
+                     {/* Step-by-step manual guide if email/password auth provider is disabled in Firebase console */}
                     {loginMsg.isConfigIssue && (
                       <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50 text-blue-950 text-xs leading-relaxed space-y-3 text-left">
-                        <div className="flex items-center gap-1.5 font-bold text-blue-800">
+                        <div className="flex items-center gap-1.5 font-bold text-blue-900">
                           <Info className="h-4.5 w-4.5 text-blue-600 shrink-0" />
-                          <span>Como ativar este recurso no Firebase (4 passos simples):</span>
+                          <span>Instruções de Permissões sobre Métodos de Login:</span>
                         </div>
-                        <ol className="list-decimal list-inside space-y-2 text-slate-700 font-medium">
-                          <li>Acesse o seu <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold inline-flex items-center gap-0.5">Firebase Console <ExternalLink className="h-3 w-3 inline" /></a> e selecione o projeto desta aplicação.</li>
-                          <li>No menu lateral esquerdo, na seção <strong>Build</strong>, clique em <strong>Authentication</strong>.</li>
-                          <li>Selecione a aba superior <strong>Sign-in method</strong> (Método de login), e depois clique no botão <strong>Adicionar novo provedor</strong> (Add new provider).</li>
-                          <li>Clique em <strong>E-mail/Senha</strong> (Email/Password), ative a primeira chave de habilitação e clique em <strong>Salvar</strong> (Save).</li>
-                        </ol>
-                        <div className="pt-2 border-t border-blue-150 text-[11px] text-blue-850 font-semibold">
-                          💡 <strong>Alternativa Imediata:</strong> Se você deseja apenas visualizar todas as funcionalidades do Painel Admin neste momento sem configurar o Firebase, basta usar o botão verde de <span className="text-emerald-700 font-bold">"Acesso de Teste (Bypass)"</span> logo abaixo na tela de login! Ele permite entrar instantaneamente.
+                        <p className="text-slate-700 font-medium">
+                          A mensagem <em className="text-red-700 font-bold">"Para gerenciar métodos de login peça a um proprietário..."</em> ocorre porque o ambiente sandboxed do AI Studio restringe permissões IAM de configuração do Firebase Console.
+                        </p>
+                        <p className="text-slate-700 font-semibold">
+                          Para contornar isso de forma rápida e segura, use uma das alternativas integradas abaixo:
+                        </p>
+                        <div className="space-y-2 border-t border-blue-150 pt-2.5 text-[11px] text-slate-800">
+                          <p>
+                            🔵 <strong>Alternativa 1 (Recomendada): Google Sign-In</strong><br />
+                            A autenticação Google já foi configurada pelo AI Studio! Você pode simplesmente logar usando o botão <strong>"Entrar com o Google"</strong> abaixo. Ao conectar sua conta (como <strong className="text-blue-800">jacksonbjr@gmail.com</strong>), o sistema lhe concederá benefícios de administrador em tempo real imediatamente.
+                          </p>
+                          <p>
+                            🟢 <strong>Alternativa 2: Modo de Teste Rápido</strong><br />
+                            Clique no botão verde <strong>"Acesso de Teste (Bypass)"</strong> mais abaixo para experimentar todas as ferramentas do Painel CIPA localmente por meio de armazenamento isolado instantâneo.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -728,6 +828,27 @@ export default function App() {
                     >
                       {isAuthPending ? 'Entrando...' : 'Entrar no Painel CIPA'}
                       <ChevronRight className="h-4.5 w-4.5" />
+                    </button>
+
+                    <div className="relative flex py-1 items-center">
+                      <div className="flex-grow border-t border-slate-200"></div>
+                      <span className="flex-shrink mx-3 text-slate-400 text-[10px] uppercase font-bold tracking-wider">Ou</span>
+                      <div className="flex-grow border-t border-slate-200"></div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      disabled={isAuthPending}
+                      className="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 transition-colors text-slate-700 border border-slate-300 font-bold py-2.5 px-4 rounded-xl text-xs sm:text-sm cursor-pointer shadow-xs"
+                    >
+                      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </svg>
+                      <span>Entrar com o Google</span>
                     </button>
 
                     <div className="flex justify-between items-center text-[10px] text-slate-500 pt-1.5 select-none font-semibold">
