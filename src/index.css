@@ -7,22 +7,55 @@
     margin: 10mm 12mm 10mm 12mm;
   }
 
-  /* Oculta tudo na página durante a impressão */
-  body * {
-    visibility: hidden;
+  /* Ocultação total e remoção de layout de elementos não destinados à impressão */
+  #app-header,
+  #app-footer,
+  header,
+  footer,
+  .print\:hidden {
+    display: none !important;
   }
 
-  /* Exibe exclusivamente a área que queremos imprimir */
-  .printable-area,
-  .printable-area * {
-    visibility: visible;
+  /* Remoção dos limites de rolagem, margens e barras na janela */
+  html, body, #root, #app-main-content, #admin-panel {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    box-shadow: none !important;
   }
 
-  /* Ajusta a área imprimível para ocupar a folha inteira de forma compacta */
+  /* Centralização de impressão: o flex container do modal é resetado para normalizar o fluxo */
+  .fixed.inset-0.z-\[999\] {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+  }
+
+  /* Forçar a ocultação do backdrop escuro e blur na impressão */
+  .fixed.inset-0.z-\[999\] > div.bg-slate-900\/70,
+  .backdrop-blur-xs {
+    display: none !important;
+  }
+
+  /* Força cores originais do tema (fundos de tabelas, badges de status, etc.) na impressão */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Formatação compacta da área do relatório */
   .printable-area {
-    position: absolute !important;
-    left: 0 !important;
+    position: relative !important;
     top: 0 !important;
+    left: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -33,30 +66,20 @@
     color: black !important;
     display: flex !important;
     flex-direction: column !important;
-    gap: 12px !important; /* Espaçamento vertical vertical reduzido e consolidado */
+    gap: 8px !important; /* Mais compacto para garantir caber na folha */
+    page-break-inside: avoid !important;
   }
 
-  /* Forçar as cores originais do tema (fundos, chips de status, etc.) na impressão */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  /* Ocultar elementos marcados com print:hidden */
-  .print\:hidden {
-    display: none !important;
-  }
-
-  /* Reduções adicionais de tamanho de títulos e textos específicos para folha A4 */
+  /* Reduções de tamanho adicionais para folha A4 */
   .printable-area h1 {
-    font-size: 16px !important;
-    line-height: 1.2 !important;
+    font-size: 15px !important;
+    line-height: 1.15 !important;
   }
 
   .printable-area h3 {
     font-size: 10px !important;
     padding-bottom: 2px !important;
-    margin-bottom: 2px !important;
+    margin-bottom: 1px !important;
   }
 
   .printable-area table th {
@@ -65,7 +88,7 @@
   }
 
   .printable-area table td {
-    font-size: 9px !important;
+    font-size: 8.5px !important;
     padding-top: 2px !important;
     padding-bottom: 2px !important;
   }
@@ -73,7 +96,7 @@
   .printable-area p, 
   .printable-area span,
   .printable-area td {
-    line-height: 1.25 !important;
+    line-height: 1.2 !important;
   }
 }
 

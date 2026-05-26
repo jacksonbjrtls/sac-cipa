@@ -924,7 +924,8 @@ export default function AdminPanel({
 
   return (
     <div id="admin-panel" className="w-full space-y-6 font-sans">
-      {/* Upper info row */}
+      <div className="print:hidden space-y-6">
+        {/* Upper info row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-800 flex items-center gap-2.5">
@@ -2094,6 +2095,7 @@ export default function AdminPanel({
           </div>
         )}
       </AnimatePresence>
+      </div>
 
       {/* Executive Report Print Modal */}
       <AnimatePresence>
