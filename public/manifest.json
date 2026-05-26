@@ -1,0 +1,23 @@
+{
+  "short_name": "Sac CIPA",
+  "name": "Sac CIPA - Comunicação de Dúvidas e Sugestões",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128' width='192' height='192'><rect width='128' height='128' fill='%231e293b' rx='24' /><circle cx='64' cy='64' r='40' fill='%2322c55e' /><path d='M52 64h24M64 52v24' stroke='white' stroke-width='10' stroke-linecap='round' /></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128' width='512' height='512'><rect width='128' height='128' fill='%231e293b' rx='24' /><circle cx='64' cy='64' r='40' fill='%2322c55e' /><path d='M52 64h24M64 52v24' stroke='white' stroke-width='10' stroke-linecap='round' /></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#22c55e",
+  "display": "standalone",
+  "orientation": "portrait"
+}

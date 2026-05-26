@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "User with admin privileges to manage registrations and appoint new admins",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Admin email address" },
+        "addedBy": { "type": "string", "description": "UID of the admin who added this person" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the admin was added" }
+      },
+      "required": ["email", "addedBy", "createdAt"]
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "CIPA SAC feedback registrations",
+      "type": "object",
+      "properties": {
+        "agreedToShare": { "type": "boolean", "description": "Whether user agrees to share data with CIPA committee" },
+        "dateObservation": { "type": "string", "description": "Date of observation in dd/MM/yyyy format" },
+        "isIdentified": { "type": "boolean", "description": "Whether user wants to identify themselves" },
+        "name": { "type": "string", "description": "Name of the person if identified" },
+        "email": { "type": "string", "description": "Email of the person if identified" },
+        "phone": { "type": "string", "description": "Phone of the person if identified" },
+        "area": { "type": "string", "description": "The administrative or operational area" },
+        "category": { "type": "string", "description": "Category of feedback" },
+        "info": { "type": "string", "description": "Observed feedback description and details" },
+        "status": { "type": "string", "enum": ["pendente", "em_analise", "resolvido", "arquivado"], "description": "Current status" },
+        "adminNotes": { "type": "string", "description": "Internal notes by CIPA administrators" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the record was created" },
+        "respondedBy": { "type": "string", "description": "Who took action on this registration" },
+        "respondedAt": { "type": "string", "format": "date-time", "description": "When action was taken" }
+      },
+      "required": ["agreedToShare", "dateObservation", "isIdentified", "area", "category", "info", "status", "createdAt"]
+    },
+    "Area": {
+      "title": "Area",
+      "description": "Operating departments and sectors managed dynamically by CIPA admins",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the sector or yard" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the area was created" }
+      },
+      "required": ["name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "admins/{adminId}": {
+      "schema": "Admin",
+      "description": "List of authorized administrators"
+    },
+    "registrations/{registrationId}": {
+      "schema": "Registration",
+      "description": "User submitted CIPA registrations and SAC messages"
+    },
+    "areas/{areaId}": {
+      "schema": "Area",
+      "description": "Dynamic operating areas and sectors for the submission forms"
+    }
+  }
+}

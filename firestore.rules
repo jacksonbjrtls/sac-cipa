@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "jacksonbjr@gmail.com" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\@]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Admin validation helper
+    function isValidAdmin(data) {
+      return data.keys().hasAll(['email', 'addedBy', 'createdAt']) &&
+             data.keys().size() == 3 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.addedBy is string && data.addedBy.size() <= 128 &&
+             data.createdAt == request.time;
+    }
+
+    // Registration validation helper
+    function isValidRegistration(data) {
+      return data.keys().hasAll(['agreedToShare', 'dateObservation', 'isIdentified', 'area', 'category', 'info', 'status', 'createdAt']) &&
+             data.keys().size() >= 8 && data.keys().size() <= 13 &&
+             data.agreedToShare is bool &&
+             data.dateObservation is string && data.dateObservation.size() <= 20 &&
+             data.isIdentified is bool &&
+             // Optional identification fields
+             (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             data.area is string && data.area.size() <= 100 &&
+             data.category is string && data.category.size() <= 200 &&
+             data.info is string && data.info.size() <= 10000 &&
+             data.status is string && data.status in ['pendente', 'em_analise', 'resolvido', 'arquivado'] &&
+             data.createdAt == request.time &&
+             // Admin fields (optional on create, verified on write)
+             (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 5000)) &&
+             (!('respondedBy' in data) || (data.respondedBy is string && data.respondedBy.size() <= 200)) &&
+             (!('respondedAt' in data) || (data.respondedAt is string || data.respondedAt == request.time));
+    }
+
+    // Area validation helper
+    function isValidArea(data) {
+      return data.keys().hasAll(['name', 'createdAt']) &&
+             data.keys().size() == 2 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.createdAt == request.time;
+    }
+
+    match /admins/{adminId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(adminId) && isValidAdmin(incoming());
+      allow update: if isAdmin() && isValidId(adminId) && isValidAdmin(incoming());
+      allow delete: if isAdmin() && isValidId(adminId);
+    }
+
+    match /registrations/{registrationId} {
+      allow create: if isValidRegistration(incoming());
+      allow get: if true;
+      allow list: if isAdmin();
+      allow update: if isAdmin() && isValidRegistration(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /areas/{areaId} {
+      allow get, list: if true;
+      allow create: if isAdmin() && isValidId(areaId) && isValidArea(incoming());
+      allow update: if isAdmin() && isValidId(areaId) && isValidArea(incoming());
+      allow delete: if isAdmin() && isValidId(areaId);
+    }
+  }
+}
