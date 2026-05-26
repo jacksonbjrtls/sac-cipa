@@ -265,11 +265,11 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
   return (
     <div id="registration-wizard" className="w-full font-sans">
       {/* CIPA Header Banner */}
-      <div className="mb-6 rounded-3xl bg-gradient-to-br from-blue-600 to-blue-700 p-6 sm:p-8 border border-blue-500/15 shadow-sm">
+      <div className="mb-6 rounded-3xl bg-gradient-to-br from-emerald-700 to-emerald-800 p-6 sm:p-8 border border-emerald-600/15 shadow-sm">
         <h1 className="font-sans text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
           Sistema de Atendimento ao Colaborador
         </h1>
-        <p className="text-blue-50 text-sm leading-relaxed max-w-2xl">
+        <p className="text-emerald-50 text-sm leading-relaxed max-w-2xl">
           Use este formulário para enviar dúvidas, sugestões, críticas ou apontamentos de riscos diretamente para a Mesa Diretora da CIPA. Seu relato será apreciado com total zelo.
         </p>
       </div>
@@ -278,7 +278,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
       {!showDisagreementThanks && (
         <div className="mb-8 flex items-center justify-between px-2 text-xs font-mono text-slate-400">
           <div className="flex gap-1.5 items-center">
-            <span className="text-blue-600 font-bold">Passo {step} de 6</span>
+            <span className="text-emerald-700 font-bold">Passo {step} de 6</span>
             <span className="text-slate-300">|</span>
             <span className="truncate max-w-[150px] sm:max-w-[280px] font-medium text-slate-650">
               {step === 1 && 'Consentimento do Comitê'}
@@ -294,7 +294,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               <div
                 key={i}
                 className={`h-1.5 w-6 rounded-full transition-all duration-300 ${
-                  i + 1 <= step ? 'bg-blue-600' : 'bg-slate-200'
+                  i + 1 <= step ? 'bg-emerald-600' : 'bg-slate-200'
                 }`}
               />
             ))}
@@ -320,8 +320,8 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               exit={{ opacity: 0, scale: 0.95 }}
               className="flex flex-col items-center justify-center py-10 text-center space-y-6"
             >
-              <div className="bg-blue-50 p-4 rounded-full text-blue-600 animate-bounce">
-                <Heart className="h-10 w-10 fill-blue-600/10 text-blue-500" />
+              <div className="bg-emerald-50 p-4 rounded-full text-emerald-600 animate-bounce">
+                <Heart className="h-10 w-10 fill-emerald-600/10 text-emerald-500" />
               </div>
               <div className="space-y-3 max-w-md">
                 <h3 className="text-xl font-extrabold text-slate-800">Agradecemos de coração!</h3>
@@ -338,7 +338,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                   type="button"
                   id="btn-manual-reset-thanks"
                   onClick={() => setShowDisagreementThanks(false)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-3 rounded-xl transition-all shadow-md cursor-pointer"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-6 py-3 rounded-xl transition-all shadow-md cursor-pointer"
                 >
                   Voltar ao Início
                 </button>
@@ -354,13 +354,13 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               className="space-y-6"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
                   <ShieldCheck className="h-6 w-6" />
                 </div>
                 <h3 className="font-sans text-lg font-bold text-slate-800">Comitê de Transparência CIPA</h3>
               </div>
               
-              <div className="border-l-4 border-blue-500 bg-blue-50/40 p-5 rounded-r-2xl space-y-4">
+              <div className="border-l-4 border-emerald-500 bg-emerald-50/40 p-5 rounded-r-2xl space-y-4">
                 <p className="text-[13px] sm:text-sm text-slate-700 font-bold tracking-wide leading-relaxed">
                   Aviso de Segurança e Compartilhamento:
                 </p>
@@ -382,7 +382,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                   }}
                   className={`flex flex-col items-center justify-center p-5 rounded-2xl border text-center transition-all cursor-pointer ${
                     formData.agreedToShare === true
-                      ? 'border-blue-500 bg-blue-50/70 text-blue-800 ring-2 ring-blue-500/10'
+                      ? 'border-emerald-500 bg-emerald-50/70 text-emerald-850 ring-2 ring-emerald-500/10'
                       : 'border-slate-200 bg-slate-50/50 text-slate-500 hover:border-slate-350 hover:bg-slate-100 hover:text-slate-800'
                   }`}
                 >
@@ -412,7 +412,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               className="space-y-6"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
                   <Calendar className="h-6 w-6" />
                 </div>
                 <h3 className="font-sans text-lg font-bold text-slate-800">Informe a Data da Observação</h3>
@@ -429,7 +429,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                     value={formData.dateObservation}
                     onChange={handleDateChange}
                     placeholder="DD/MM/AAAA"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-mono text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-mono text-base focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/10"
                   />
                   <span className="absolute right-3.5 top-3.5 text-slate-400">
                     <Calendar className="h-5 w-5" />
@@ -451,7 +451,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               className="space-y-6"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
                   <UserCheck className="h-6 w-6" />
                 </div>
                 <h3 className="font-sans text-lg font-bold text-slate-800">Deseja se Identificar?</h3>
@@ -471,7 +471,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                   }}
                   className={`py-3.5 px-4 rounded-xl border text-center font-bold tracking-wider transition-all cursor-pointer ${
                     formData.isIdentified === true
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500/10'
+                      ? 'border-emerald-500 bg-emerald-550/10 text-emerald-700 ring-2 ring-emerald-500/10'
                       : 'border-slate-200 bg-slate-50/50 text-slate-500 hover:border-slate-350 hover:bg-slate-100 hover:text-slate-800'
                   }`}
                 >
@@ -487,7 +487,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                   }}
                   className={`py-3.5 px-4 rounded-xl border text-center font-bold tracking-wider transition-all cursor-pointer ${
                     formData.isIdentified === false
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500/10'
+                      ? 'border-emerald-500 bg-emerald-555/10 text-emerald-700 ring-2 ring-emerald-500/10'
                       : 'border-slate-200 bg-slate-50/50 text-slate-500 hover:border-slate-350 hover:bg-slate-100 hover:text-slate-800'
                   }`}
                 >
@@ -514,7 +514,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                         value={formData.name}
                         onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                         placeholder="Seu nome completo"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/10"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/10"
                       />
                     </div>
 
@@ -529,7 +529,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                           value={formData.email}
                           onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                           placeholder="exemplo@empresa.com"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/10"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/10"
                         />
                       </div>
 
@@ -543,7 +543,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                           value={formData.phone}
                           onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                           placeholder="(99) 99999-9999"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/10"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/10"
                         />
                       </div>
                     </div>
@@ -562,7 +562,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               className="space-y-6"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
                   <MapPin className="h-6 w-6" />
                 </div>
                 <h3 className="font-sans text-lg font-bold text-slate-800">Qual é Sua Área?</h3>
@@ -591,10 +591,10 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                       setIsAreaDropdownOpen(true);
                     }}
                     placeholder="Digite no teclado para buscar..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-805 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-805 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/10"
                   />
                   {formData.area && (
-                    <span className="absolute right-3.5 top-3.5 flex h-5 items-center justify-center rounded-full bg-blue-50 border border-blue-200 px-2 text-[10px] font-bold text-blue-600">
+                    <span className="absolute right-3.5 top-3.5 flex h-5 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200 px-2 text-[10px] font-bold text-emerald-800">
                       Selecionado
                     </span>
                   )}
@@ -614,7 +614,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                             setIsAreaDropdownOpen(false);
                             setFormError(null);
                           }}
-                          className="w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-slate-50 hover:text-blue-600 text-slate-700 transition-colors cursor-pointer"
+                          className="w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-slate-50 hover:text-emerald-700 text-slate-700 transition-colors cursor-pointer"
                         >
                           {area}
                         </button>
@@ -643,7 +643,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               className="space-y-6"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
                   <Clipboard className="h-6 w-6" />
                 </div>
                 <h3 className="font-sans text-lg font-bold text-slate-800">O que deseja Registrar?</h3>
@@ -663,7 +663,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                       }}
                       className={`flex flex-col text-left p-4 rounded-xl border transition-all cursor-pointer ${cat.color} ${
                         formData.category === cat.id
-                          ? 'ring-2 ring-blue-500 scale-[1.01] shadow-md bg-white border-blue-400'
+                          ? 'ring-2 ring-emerald-550 scale-[1.01] shadow-md bg-white border-emerald-400'
                           : 'shadow-sm border-slate-200 bg-white'
                       }`}
                     >
@@ -690,7 +690,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
               className="space-y-6"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
                   <Send className="h-6 w-6" />
                 </div>
                 <h3 className="font-sans text-lg font-bold text-slate-800">Descreva seu Relato</h3>
@@ -712,11 +712,11 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                   value={formData.info}
                   onChange={(e) => setFormData(prev => ({ ...prev, info: e.target.value }))}
                   placeholder="Por favor, forneça o maior volume de detalhes possíveis (localizações exatas, números de máquinas envolvidas, horários, comportamento seguro ou vulnerabilidades vistas)..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/10"
                 />
 
-                <div className="rounded-xl bg-blue-50/50 border border-blue-105 p-4 text-xs text-blue-800 flex items-center space-x-2">
-                  <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+                <div className="rounded-xl bg-emerald-50/50 border border-emerald-100 p-4 text-xs text-emerald-800 flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>Seu relatório será registrado nos canais da CIPA e passará por análise sigilosa e técnica dos membros eleitos.</span>
                 </div>
               </div>
@@ -747,7 +747,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                 type="button"
                 id="wizard-next-btn"
                 onClick={handleNext}
-                className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all cursor-pointer shadow-sm shadow-blue-100"
+                className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all cursor-pointer shadow-sm shadow-emerald-100"
               >
                 <span>Continuar</span>
                 <ChevronRight className="h-4 w-4" />
@@ -758,7 +758,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                 id="wizard-submit-btn"
                 onClick={handleSubmit}
                 disabled={isSubmitting || !isStepValid()}
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-blue-100"
+                className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-100"
               >
                 {isSubmitting ? (
                   <>

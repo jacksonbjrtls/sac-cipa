@@ -12,6 +12,7 @@ import Footer from './components/Footer';
 import FormWizard from './components/FormWizard';
 import ProtocolTracker from './components/ProtocolTracker';
 import AdminPanel from './components/AdminPanel';
+import CipaLogo from './components/CipaLogo';
 import { AREAS_LIST } from './areas';
 import { 
   ShieldCheck, Info, Search, FileText, AlertCircle, Sparkles, ExternalLink,
@@ -41,7 +42,13 @@ export default function App() {
   const [isRegisteringPassword, setIsRegisteringPassword] = useState<boolean>(false);
   const [emailCheckStatus, setEmailCheckStatus] = useState<'idle' | 'checking' | 'authorized' | 'unauthorized'>('idle');
   const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [loginMsg, setLoginMsg] = useState<{ type: 'success' | 'error' | 'warning', text: string, isConfigIssue?: boolean } | null>(null);
+  const [loginMsg, setLoginMsg] = useState<{
+    type: 'success' | 'error' | 'warning',
+    text: string,
+    isConfigIssue?: boolean,
+    showResetButton?: boolean,
+    emailToReset?: string
+  } | null>(null);
   const [isAuthPending, setIsAuthPending] = useState<boolean>(false);
 
   // Auto-seed default admin and operating areas if database is empty (Runs securely once an Admin is identified)
@@ -261,6 +268,15 @@ export default function App() {
       return;
     }
 
+    if (!trimmed.endsWith('@eldoradobrasil.com.br')) {
+      setEmailCheckStatus('unauthorized');
+      setLoginMsg({
+        type: 'warning',
+        text: 'Acesso restrito: E-mails administrativos devem pertencer ao domínio corporativo @eldoradobrasil.com.br.'
+      });
+      return;
+    }
+
     setEmailCheckStatus('checking');
     try {
       const adminDocRef = doc(db, 'admins', trimmed);
@@ -272,7 +288,7 @@ export default function App() {
         setEmailCheckStatus('unauthorized');
         setLoginMsg({
           type: 'warning',
-          text: 'Seu e-mail não está credenciado como administrador. A entrada é somente para pessoal autorizado.'
+          text: 'Seu e-mail não está credenciado como administrador no Sistema de Atendimento ao Colaborador.'
         });
       }
     } catch (err) {
@@ -298,6 +314,15 @@ export default function App() {
 
     // Direct check for authorization to satisfy requirement
     if (email !== 'jacksonbjr@gmail.com') {
+      if (!email.endsWith('@eldoradobrasil.com.br')) {
+        setEmailCheckStatus('unauthorized');
+        setLoginMsg({
+          type: 'warning',
+          text: 'Acesso restrito: E-mails de administradores devem obrigatoriamente pertencer ao domínio corporativo @eldoradobrasil.com.br.'
+        });
+        setIsAuthPending(false);
+        return;
+      }
       try {
         const adminDocRef = doc(db, 'admins', email);
         const docSnap = await getDoc(adminDocRef);
@@ -329,13 +354,20 @@ export default function App() {
           text: 'O provedor de autenticação "E-mail/Senha" (Email/Password) está desativado no Firebase Console para este projeto.',
           isConfigIssue: true
         });
-      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-login-credentials' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+      } else if (
+        err.code === 'auth/wrong-password' || 
+        err.code === 'auth/invalid-login-credentials' || 
+        err.code === 'auth/invalid-credential' || 
+        err.code === 'auth/user-not-found'
+      ) {
         const isMaster = email === 'jacksonbjr@gmail.com';
         setLoginMsg({ 
           type: 'error', 
           text: isMaster 
-            ? 'Atenção Jackson: Como o seu Firebase é totalmente novo e limpo, você ainda não possui um cadastro de senha de e-mail para este projeto. Por favor, clique na opção azul "Definir Nova Senha (1º Acesso)" que fica bem abaixo nesta tela, preencha o seu e-mail jacksonbjr@gmail.com e registre sua nova senha para si. Se preferir, pode também simplesmente clicar no botão "Entrar com o Google" abaixo para fazer o login instantaneamente sem precisar definir senha!' 
-            : 'Senha incorreta ou credenciais inválidas. Se este é seu primeiro acesso neste novo ambiente de comitê CIPA, clique em "Definir Nova Senha (1º Acesso)" abaixo para cadastrar sua nova senha.' 
+            ? 'Atenção Jackson: A senha informada está incorreta ou ainda não foi criada. Como seu login já existe no sistema, você pode definir ou redefinir sua senha manual de forma instantânea clicando no botão abaixo para receber o link de criação de senha oficial no seu e-mail!' 
+            : 'Senha incorreta ou credenciais inválidas. Se você deseja definir ou recuperar sua senha de forma fácil, clique no botão azul abaixo para que enviemos um link de configuração direto para seu e-mail.',
+          showResetButton: true,
+          emailToReset: email
         });
       } else {
         setLoginMsg({ type: 'error', text: `Falha na autenticação: ${err.message}` });
@@ -367,13 +399,21 @@ export default function App() {
 
     // Verify they are accredited
     if (email !== 'jacksonbjr@gmail.com') {
+      if (!email.endsWith('@eldoradobrasil.com.br')) {
+        setLoginMsg({
+          type: 'warning',
+          text: 'Acesso restrito: O cadastro de senha é exclusivo para o domínio @eldoradobrasil.com.br.'
+        });
+        setIsAuthPending(false);
+        return;
+      }
       try {
         const adminDocRef = doc(db, 'admins', email);
         const docSnap = await getDoc(adminDocRef);
         if (!docSnap.exists()) {
           setLoginMsg({
             type: 'warning',
-            text: 'Seu e-mail não está credenciado como administrador. A entrada é somente para pessoal autorizado.'
+            text: 'Seu e-mail não está credenciado como administrador no Sistema de Atendimento ao Colaborador.'
           });
           setIsAuthPending(false);
           return;
@@ -401,7 +441,22 @@ export default function App() {
           isConfigIssue: true
         });
       } else if (err.code === 'auth/email-already-in-use') {
-        setLoginMsg({ type: 'error', text: 'Este e-mail administrativo já possui uma senha. Se necessário, recupere-a usando a opção "Recuperar Senha".' });
+        // Automatically send a redefinition email to make their lives 10x easier
+        try {
+          await sendPasswordResetEmail(auth, email);
+          setLoginMsg({
+            type: 'success',
+            text: `Percebemos que o e-mail "${email}" já possui um registro ativo no Firebase Autenticação (pode ter sido criado por login anterior com Google). Para sua comodidade, ENVIAMOS UM LINK DE CRIAÇÃO/DEFINIÇÃO DE SENHA para seu e-mail agora mesmo! Acesse sua caixa de entrada ou Spam, clique no link oficial do Firebase para criar sua senha e depois retorne para fazer o login manual normalmente. Simples assim!`
+          });
+        } catch (resetErr: any) {
+          console.error("Erro ao enviar reset automático:", resetErr);
+          setLoginMsg({
+            type: 'error',
+            text: `Este e-mail administrativo já possui registro ativo. Tentamos enviar um link de redefinição de forma automática, mas ocorreu um erro no servidor de e-mail do Firebase: ${resetErr.message || resetErr}. Clique no botão abaixo para tentar enviar manualmente.`,
+            showResetButton: true,
+            emailToReset: email
+          });
+        }
       } else {
         setLoginMsg({ type: 'error', text: `Erro: ${err.message}` });
       }
@@ -424,13 +479,21 @@ export default function App() {
 
     // Verify they are accredited
     if (email !== 'jacksonbjr@gmail.com') {
+      if (!email.endsWith('@eldoradobrasil.com.br')) {
+        setLoginMsg({
+          type: 'warning',
+          text: 'Acesso restrito: E-mails informados devem pertencer ao domínio corporativo @eldoradobrasil.com.br.'
+        });
+        setIsAuthPending(false);
+        return;
+      }
       try {
         const adminDocRef = doc(db, 'admins', email);
         const docSnap = await getDoc(adminDocRef);
         if (!docSnap.exists()) {
           setLoginMsg({
             type: 'warning',
-            text: 'Seu e-mail não está credenciado como administrador. A entrada é somente para pessoal autorizado.'
+            text: 'Seu e-mail não está credenciado como administrador no Sistema de Atendimento ao Colaborador.'
           });
           setIsAuthPending(false);
           return;
@@ -604,8 +667,8 @@ export default function App() {
               <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 max-w-lg mx-auto shadow-sm space-y-6">
                 {/* Visual Header */}
                 <div className="text-center space-y-2">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                    <ShieldCheck className="h-8 w-8" />
+                  <div className="mx-auto flex justify-center mb-3">
+                    <CipaLogo customLogo={customLogo} size={56} className="mx-auto" />
                   </div>
                   <h2 id="cipa-admin-auth-header" className="text-xl font-bold text-slate-800">
                     {isForgotPassword 
@@ -649,14 +712,40 @@ export default function App() {
                               : 'Erro de Autenticação'}
                         </p>
                         <p className="leading-relaxed font-semibold">{loginMsg.text}</p>
+                        {loginMsg.showResetButton && loginMsg.emailToReset && (
+                          <div className="pt-2.5 text-left">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const email = loginMsg.emailToReset!;
+                                setLoginMsg({ type: 'success', text: `Solicitando link de definição de senha oficial para ${email}...` });
+                                try {
+                                  await sendPasswordResetEmail(auth, email);
+                                  setLoginMsg({
+                                    type: 'success',
+                                    text: `Link enviado com total sucesso! Verifique a Caixa de Entrada (e pasta de Spam/Lixo Eletrônico) de "${email}" para cadastrar sua nova senha antes de tentar logar novamente.`
+                                  });
+                                } catch (resetErr: any) {
+                                  setLoginMsg({
+                                    type: 'error',
+                                    text: `Ocorreu um erro ao despachar a solicitação: ${resetErr.message || resetErr}`
+                                  });
+                                }
+                              }}
+                              className="mt-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2.5 rounded-xl text-[11px] sm:text-xs transition-all cursor-pointer shadow-sm tracking-wide"
+                            >
+                              Enviar Link de Criação de Senha por E-mail
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                      {/* Step-by-step manual guide if email/password auth provider is disabled in Firebase console */}
                     {loginMsg.isConfigIssue && (
-                      <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50 text-blue-950 text-xs leading-relaxed space-y-3 text-left">
-                        <div className="flex items-center gap-1.5 font-bold text-blue-900">
-                          <Info className="h-4.5 w-4.5 text-blue-600 shrink-0" />
+                      <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 text-emerald-950 text-xs leading-relaxed space-y-3 text-left">
+                        <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                          <Info className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
                           <span>Instruções de Permissões sobre Métodos de Login:</span>
                         </div>
                         <p className="text-slate-700 font-medium">
@@ -665,10 +754,10 @@ export default function App() {
                         <p className="text-slate-700 font-semibold">
                           Para contornar isso de forma rápida e segura, use uma das alternativas integradas abaixo:
                         </p>
-                        <div className="space-y-2 border-t border-blue-150 pt-2.5 text-[11px] text-slate-800">
+                        <div className="space-y-2 border-t border-emerald-100/70 pt-2.5 text-[11px] text-slate-800">
                           <p>
                             🔵 <strong>Alternativa 1 (Recomendada): Google Sign-In</strong><br />
-                            A autenticação Google já foi configurada pelo AI Studio! Você pode simplesmente logar usando o botão <strong>"Entrar com o Google"</strong> abaixo. Ao conectar sua conta (como <strong className="text-blue-800">jacksonbjr@gmail.com</strong>), o sistema lhe concederá benefícios de administrador em tempo real imediatamente.
+                            A autenticação Google já foi configurada pelo AI Studio! Você pode simplesmente logar usando o botão <strong>"Entrar com o Google"</strong> abaixo. Ao conectar sua conta (como <strong className="text-emerald-800">jacksonbjr@gmail.com</strong>), o sistema lhe concederá benefícios de administrador em tempo real imediatamente.
                           </p>
                           <p>
                             🟢 <strong>Alternativa 2: Modo de Teste Rápido</strong><br />
@@ -713,8 +802,8 @@ export default function App() {
                             setLoginMsg(null);
                           }}
                           onBlur={() => checkEmailAuthorized(loginEmail)}
-                          placeholder="Ex: jacques@suaempresa.com"
-                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                          placeholder="Ex: nome@eldoradobrasil.com.br"
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/10"
                           required
                           disabled={isAuthPending}
                         />
@@ -724,7 +813,7 @@ export default function App() {
                     <button
                       type="submit"
                       disabled={isAuthPending || emailCheckStatus === 'unauthorized'}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
                     >
                       {isAuthPending ? 'Enviando...' : 'Enviar Link de Recuperação'}
                       <ChevronRight className="h-4 w-4" />
@@ -765,8 +854,8 @@ export default function App() {
                               setLoginMsg(null);
                             }}
                             onBlur={() => checkEmailAuthorized(loginEmail)}
-                            placeholder="Ex: jacques@suaempresa.com"
-                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                            placeholder="Ex: nome@eldoradobrasil.com.br"
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/10"
                             required
                             disabled={isAuthPending}
                           />
@@ -791,7 +880,7 @@ export default function App() {
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
                             placeholder="Defina qual será sua senha"
-                            className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                            className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/10"
                             required
                             disabled={isAuthPending || emailCheckStatus === 'unauthorized'}
                           />
@@ -846,13 +935,13 @@ export default function App() {
                               setLoginMsg(null);
                             }}
                             onBlur={() => checkEmailAuthorized(loginEmail)}
-                            placeholder="nome.sobrenome@empresa.com"
+                            placeholder="nome.sobrenome@eldoradobrasil.com.br"
                             className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none transition-all focus:bg-white ${
                               emailCheckStatus === 'unauthorized'
                                 ? 'border-red-300 focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-red-50/10'
                                 : emailCheckStatus === 'authorized'
                                   ? 'border-emerald-200 focus:border-emerald-500'
-                                  : 'border-slate-200 focus:border-blue-500'
+                                  : 'border-slate-200 focus:border-emerald-500'
                             }`}
                             required
                             disabled={isAuthPending}
@@ -870,7 +959,7 @@ export default function App() {
                               setIsForgotPassword(true);
                               setLoginMsg(null);
                             }}
-                            className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-bold transition-all"
+                            className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:underline font-bold transition-all"
                           >
                             Esqueci minha senha?
                           </button>
@@ -884,7 +973,7 @@ export default function App() {
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
                             placeholder="Insira sua senha de acesso"
-                            className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                            className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm font-semibold focus:outline-none focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/10"
                             required
                             disabled={isAuthPending || emailCheckStatus === 'unauthorized'}
                           />
@@ -902,7 +991,7 @@ export default function App() {
                     <button
                       type="submit"
                       disabled={isAuthPending || emailCheckStatus === 'unauthorized'}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition-all cursor-pointer shadow-sm text-center flex items-center justify-center gap-1.5"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition-all cursor-pointer shadow-sm text-center flex items-center justify-center gap-1.5"
                     >
                       {isAuthPending ? 'Entrando...' : 'Entrar no Painel CIPA'}
                       <ChevronRight className="h-4.5 w-4.5" />
@@ -916,7 +1005,7 @@ export default function App() {
                           setIsRegisteringPassword(true);
                           setLoginMsg(null);
                         }}
-                        className="text-blue-600 hover:text-blue-800 hover:underline font-extrabold shadow-none bg-transparent p-0 m-0 cursor-pointer"
+                        className="text-emerald-600 hover:text-emerald-700 hover:underline font-extrabold shadow-none bg-transparent p-0 m-0 cursor-pointer"
                       >
                         Definir Nova Senha (1º Acesso)
                       </button>

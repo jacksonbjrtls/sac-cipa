@@ -175,14 +175,14 @@ export default function AdminPanel({
       } else {
         parsedAdmins = [
           {
-            id: 'ana.silva@empresa.com.br',
-            email: 'ana.silva@empresa.com.br',
+            id: 'ana.silva@eldoradobrasil.com.br',
+            email: 'ana.silva@eldoradobrasil.com.br',
             addedBy: 'jacksonbjr@gmail.com',
             createdAt: { seconds: Math.floor(Date.now() / 1000) - 2592000, nanoseconds: 0 } as any
           },
           {
-            id: 'marcos.souza@empresa.com.br',
-            email: 'marcos.souza@empresa.com.br',
+            id: 'marcos.souza@eldoradobrasil.com.br',
+            email: 'marcos.souza@eldoradobrasil.com.br',
             addedBy: 'jacksonbjr@gmail.com',
             createdAt: { seconds: Math.floor(Date.now() / 1000) - 1296000, nanoseconds: 0 } as any
           }
@@ -391,6 +391,11 @@ export default function AdminPanel({
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailToNominate)) {
       setErrorMsg("Por favor, insira um endereço de e-mail de administrador válido.");
+      return;
+    }
+
+    if (emailToNominate !== 'jacksonbjr@gmail.com' && !emailToNominate.endsWith('@eldoradobrasil.com.br')) {
+      setErrorMsg("Operação Não Permitida: Novos administradores associados devem obrigatoriamente possuir o e-mail corporativo finalizado com @eldoradobrasil.com.br.");
       return;
     }
 
@@ -660,7 +665,7 @@ export default function AdminPanel({
   };
 
   // Logo handlers
-  const compressLogoImage = (file: File, maxWidth: number = 400, maxHeight: number = 400): Promise<string> => {
+  const compressLogoImage = (file: File, maxWidth: number = 220, maxHeight: number = 220): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -695,7 +700,7 @@ export default function AdminPanel({
           ctx.drawImage(img, 0, 0, width, height);
           
           // Export as PNG for excellent logo quality/transparency support.
-          // 400x400 PNG is typically around 15KB - 40KB, which is extremely safe for Firestore's 1MB limit.
+          // 220x220 PNG is typically around 5KB - 15KB, which is extremely safe for Firestore's 1MB limit.
           try {
             const base64 = canvas.toDataURL('image/png');
             resolve(base64);
@@ -727,6 +732,12 @@ export default function AdminPanel({
     try {
       // Compress the image before storing it
       const compressedBase64 = await compressLogoImage(file);
+
+      // Firestore limit safety check: Firestore document size cannot exceed 1MB (1,048,576 bytes).
+      // Base64 strings store 6 bits per character, meaning ~800,000 characters is about 600KB, a perfect safe boundary.
+      if (compressedBase64.length > 800000) {
+        throw new Error("Mesmo após otimização técnica, a imagem possui detalhes excessivos e ultrapassou os limites do banco. Por favor, utilize uma imagem mais simples, limpa ou em formato JPG.");
+      }
 
       if (isSimulated) {
         localStorage.setItem('cipa_custom_logo', compressedBase64);
@@ -810,7 +821,7 @@ export default function AdminPanel({
   const statusTags = (status: Registration['status']) => {
     switch (status) {
       case 'pendente': return 'bg-yellow-50 text-yellow-850 border border-yellow-200 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full';
-      case 'em_analise': return 'bg-blue-50 text-blue-750 border border-blue-200 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full';
+      case 'em_analise': return 'bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full';
       case 'resolvido': return 'bg-emerald-50 text-emerald-850 border border-emerald-200 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full';
       case 'arquivado': return 'bg-slate-100 text-slate-655 border border-slate-200 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full';
     }
@@ -920,9 +931,9 @@ export default function AdminPanel({
                 </div>
               </div>
               <div className="bg-white p-4.5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                <p className="text-[10px] font-bold font-mono uppercase text-blue-600">EM INVESTIGAÇÃO</p>
+                <p className="text-[10px] font-bold font-mono uppercase text-emerald-700">EM INVESTIGAÇÃO</p>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-2xl font-extrabold text-blue-600">{analysisCount}</span>
+                  <span className="text-2xl font-extrabold text-emerald-700">{analysisCount}</span>
                   <span className="text-slate-400 text-xs font-semibold">/ {totalCount > 0 ? Math.round((analysisCount/totalCount)*100) : 0}%</span>
                 </div>
               </div>
@@ -939,7 +950,7 @@ export default function AdminPanel({
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-center">
               <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start">
                 <span className="text-xs text-slate-450 font-bold flex items-center gap-1 mr-1">
-                  <Filter className="h-4 w-4 text-blue-600" /> Filtrar por:
+                  <Filter className="h-4 w-4 text-emerald-600" /> Filtrar por:
                 </span>
                 
                 {/* Status Toggle tags */}
@@ -949,7 +960,7 @@ export default function AdminPanel({
                     onClick={() => setStatusFilter(st as any)}
                     className={`px-3 py-1.5 text-xs rounded-xl font-bold cursor-pointer transition-all border ${
                       statusFilter === st
-                        ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-sm'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm'
                         : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200'
                     }`}
                   >
@@ -969,7 +980,7 @@ export default function AdminPanel({
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   placeholder="Pesquisar relato por termo..."
-                  className="bg-slate-50 border border-slate-200 text-xs px-4 py-2 rounded-xl text-slate-800 focus:outline-none focus:border-blue-500 w-full lg:min-w-[240px]"
+                  className="bg-slate-50 border border-slate-200 text-xs px-4 py-2 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 w-full lg:min-w-[240px]"
                 />
               </div>
             </div>
@@ -977,8 +988,8 @@ export default function AdminPanel({
             {/* List and Grid view of submissions */}
             {loadingRegistrations ? (
               <div className="flex flex-col items-center justify-center p-12 space-y-4 border border-slate-200 rounded-3xl bg-white shadow-sm">
-                <RefreshCw className="h-8 w-8 text-blue-600 animate-spin" />
-                <span className="text-xs text-slate-500 font-mono">Carregando relatos registrados...</span>
+                <RefreshCw className="h-8 w-8 text-emerald-600 animate-spin" />
+                <span className="text-xs text-slate-505 font-mono">Carregando relatos registrados...</span>
               </div>
             ) : filteredRegs.length > 0 ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -994,7 +1005,7 @@ export default function AdminPanel({
                       }}
                       className={`w-full p-4.5 rounded-2xl border transition-all cursor-pointer text-left block space-y-3 ${
                         selectedReg?.id === reg.id
-                          ? 'border-blue-500 bg-blue-50/20 shadow-sm'
+                          ? 'border-emerald-500 bg-emerald-50/20 shadow-sm'
                           : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
                       }`}
                     >
@@ -1035,7 +1046,7 @@ export default function AdminPanel({
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-xs text-slate-400 font-bold uppercase">ACOMPANHAMENTO DOS MEMBROS</span>
-                            <span className="font-mono text-sm font-extrabold text-blue-605">#CIPA-{selectedReg.id}</span>
+                            <span className="font-mono text-sm font-extrabold text-emerald-700">#CIPA-{selectedReg.id}</span>
                           </div>
                           <p className="text-[10px] text-slate-405 mt-1 font-semibold">
                             Cadastrado em: {selectedReg.createdAt?.seconds ? new Date(selectedReg.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Agora'}
@@ -1058,19 +1069,19 @@ export default function AdminPanel({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
                           <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-blue-600" /> Setor Declarado
+                            <MapPin className="h-3 w-3 text-emerald-600" /> Setor Declarado
                           </p>
                           <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.area}</p>
                         </div>
                         <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
                           <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                            <Tag className="h-3 w-3 text-blue-600" /> Categoria
+                            <Tag className="h-3 w-3 text-emerald-600" /> Categoria
                           </p>
                           <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.category}</p>
                         </div>
                         <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
                           <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                            <Calendar className="h-3 w-3 text-blue-600" /> Data Fato
+                            <Calendar className="h-3 w-3 text-emerald-600" /> Data Fato
                           </p>
                           <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.dateObservation}</p>
                         </div>
@@ -1079,7 +1090,7 @@ export default function AdminPanel({
                       {/* Original description */}
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-450 uppercase tracking-widest block flex items-center gap-1 select-none">
-                          <FileText className="h-3.5 w-3.5 text-blue-600" /> Relato do Colaborador:
+                          <FileText className="h-3.5 w-3.5 text-emerald-600" /> Relato do Colaborador:
                         </label>
                         <div className="bg-slate-50 p-4 border border-slate-205 rounded-xl leading-relaxed text-sm text-slate-700 font-mono whitespace-pre-wrap max-h-[190px] overflow-y-auto">
                           {selectedReg.info}
@@ -1117,7 +1128,7 @@ export default function AdminPanel({
                                 disabled={updatingStatus}
                                 className={`px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider font-extrabold rounded-xl border cursor-pointer transition-all ${
                                   selectedReg.status === st
-                                    ? 'bg-blue-600 text-white font-extrabold border-blue-600 shadow-sm shadow-blue-100'
+                                    ? 'bg-emerald-600 text-white font-extrabold border-emerald-600 shadow-sm shadow-emerald-100'
                                     : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200'
                                 }`}
                               >
@@ -1132,13 +1143,13 @@ export default function AdminPanel({
 
                         {/* Direct feedback notes textarea */}
                         <div className="space-y-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block select-none">Parecer Técnico / Notas de Investigação da CIPA:</label>
+                          <label className="text-xs font-bold text-slate-550 uppercase tracking-widest block select-none">Parecer Técnico / Notas de Investigação da CIPA:</label>
                           <textarea
                             rows={4}
                             value={adminNotesText}
                             onChange={(e) => setAdminNotesText(e.target.value)}
                             placeholder="Descreva as soluções sugeridas, o andamento das reuniões, vistorias locais de SST ou a resolução..."
-                            className="w-full bg-slate-50 border border-slate-205 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/10"
+                            className="w-full bg-slate-50 border border-slate-205 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/10"
                           />
                         </div>
 
@@ -1148,7 +1159,7 @@ export default function AdminPanel({
                             onClick={() => handleUpdateRegistration(selectedReg.status, adminNotesText)}
                             disabled={updatingStatus}
                             id="save-notes-btn"
-                            className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50 shadow-sm shadow-blue-100"
+                            className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50 shadow-sm shadow-emerald-100"
                           >
                             <Send className="h-3 w-3" />
                             <span>Salvar Parecer da CIPA</span>
@@ -1190,7 +1201,7 @@ export default function AdminPanel({
           >
             {/* Left Column: Manage and Add Area */}
             <div className="lg:col-span-1 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-              <div className="flex items-center gap-2 text-blue-600">
+              <div className="flex items-center gap-2 text-emerald-600">
                 <MapPin className="h-5 w-5" />
                 <h3 className="font-sans font-bold text-slate-800 text-base">Cadastrar Novo Setor</h3>
               </div>
@@ -1208,7 +1219,7 @@ export default function AdminPanel({
                     value={newAreaName}
                     onChange={(e) => setNewAreaName(e.target.value)}
                     placeholder="Ex: Almoxarifado Central"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-xs focus:outline-none focus:border-blue-500 font-semibold"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-xs focus:outline-none focus:border-emerald-500 font-semibold"
                     required
                   />
                 </div>
@@ -1217,7 +1228,7 @@ export default function AdminPanel({
                   type="submit"
                   id="add-area-submit-btn"
                   disabled={savingArea || !newAreaName.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-blue-105"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-emerald-105"
                 >
                   {savingArea ? 'Gravando...' : 'Cadastrar Área / Setor'}
                 </button>
@@ -1234,7 +1245,7 @@ export default function AdminPanel({
                   id="bootstrap-presets-btn"
                   onClick={handleImportPresetAreas}
                   disabled={savingArea}
-                  className="w-full flex items-center justify-center gap-2 border border-slate-200 hover:border-blue-300 hover:text-blue-700 bg-slate-50/50 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 border border-slate-200 hover:border-emerald-300 hover:text-emerald-700 bg-slate-50/50 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span>Carregar Setores Padrão</span>
@@ -1256,7 +1267,7 @@ export default function AdminPanel({
 
               {loadingAreas ? (
                 <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                  <RefreshCw className="h-6 w-6 text-blue-500 animate-spin" />
+                  <RefreshCw className="h-6 w-6 text-emerald-500 animate-spin" />
                   <span className="text-xs text-slate-400 font-mono">Carregando setores cadastrados...</span>
                 </div>
               ) : areasList.length === 0 ? (
@@ -1282,9 +1293,10 @@ export default function AdminPanel({
                               <div className="flex items-center gap-1.5 max-w-sm">
                                 <input
                                   type="text"
+                                  id="editing-area-name-input"
                                   value={editingAreaName}
                                   onChange={(e) => setEditingAreaName(e.target.value)}
-                                  className="bg-white border border-blue-500 text-xs px-2.5 py-1.5 rounded-lg text-slate-800 focus:outline-none w-full font-bold"
+                                  className="bg-white border border-emerald-500 text-xs px-2.5 py-1.5 rounded-lg text-slate-800 focus:outline-none w-full font-bold"
                                   autoFocus
                                 />
                                 <button
@@ -1318,7 +1330,7 @@ export default function AdminPanel({
                                     setEditingAreaName(area.name);
                                   }}
                                   id={`edit-area-btn-${area.id}`}
-                                  className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-blue-100"
+                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 p-1.5 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-emerald-100"
                                   title="Editar nome"
                                 >
                                   <Edit3 className="h-3.5 w-3.5" />
@@ -1356,13 +1368,13 @@ export default function AdminPanel({
             
             {/* Inline nomination form */}
             <div className="lg:col-span-1 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm relative self-start space-y-6">
-              <div className="flex items-center gap-2 text-blue-600">
+              <div className="flex items-center gap-2 text-emerald-600">
                 <UserPlus className="h-5 w-5" />
                 <h3 className="font-sans font-bold text-slate-800 text-base">Promover Administrador</h3>
               </div>
 
               <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                Insira o e-mail Google da pessoa (membro associado, eleito ou diretoria) para delegar privilégios integrais de administração do aplicativo Sistema de Atendimento ao Colaborador.
+                Insira o e-mail institucional corporativo da pessoa (@eldoradobrasil.com.br) para delegar privilégios integrais de administração do aplicativo Sistema de Atendimento ao Colaborador.
               </p>
 
               <form onSubmit={handleAddAdmin} className="space-y-4">
@@ -1373,8 +1385,8 @@ export default function AdminPanel({
                     id="new-admin-email"
                     value={newAdminEmail}
                     onChange={(e) => setNewAdminEmail(e.target.value)}
-                    placeholder="exemplo@gmail.com"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-blue-500"
+                    placeholder="exemplo@eldoradobrasil.com.br"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-emerald-500"
                     required
                   />
                 </div>
@@ -1383,7 +1395,7 @@ export default function AdminPanel({
                   type="submit"
                   id="add-admin-submit-btn"
                   disabled={addingAdmin || !newAdminEmail.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-blue-105"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-emerald-105"
                 >
                   {addingAdmin ? 'Promovendo...' : 'Conceder Acesso Administrativo'}
                 </button>
@@ -1401,7 +1413,7 @@ export default function AdminPanel({
 
               {loadingAdmins ? (
                 <div className="flex flex-col items-center justify-center py-12 space-y-2">
-                  <RefreshCw className="h-6 w-6 text-blue-500 animate-spin" />
+                  <RefreshCw className="h-6 w-6 text-emerald-500 animate-spin" />
                   <span className="text-[11px] text-slate-400 font-mono">Listando administradores...</span>
                 </div>
               ) : (
@@ -1554,7 +1566,7 @@ export default function AdminPanel({
             >
               {/* Header Icon + Title */}
               <div className="flex items-start gap-3.5">
-                <div className={`p-3 rounded-full shrink-0 ${confirmConfig.isDanger ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                <div className={`p-3 rounded-full shrink-0 ${confirmConfig.isDanger ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
                   {confirmConfig.isDanger ? <ShieldAlert className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
                 </div>
                 <div className="space-y-1">
@@ -1586,7 +1598,7 @@ export default function AdminPanel({
                   className={`px-4.5 py-2.5 rounded-xl text-xs font-bold text-white transition-all cursor-pointer shadow-sm ${
                     confirmConfig.isDanger
                       ? 'bg-red-600 hover:bg-red-700 shadow-red-100'
-                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-105'
+                      : 'bg-emerald-605 hover:bg-emerald-700 shadow-emerald-105'
                   }`}
                 >
                   {confirmConfig.confirmText || "Confirmar"}

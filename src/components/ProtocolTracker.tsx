@@ -65,7 +65,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
       case 'pendente':
         return { text: 'Pendente', color: 'bg-yellow-50 text-yellow-800 border border-yellow-250' };
       case 'em_analise':
-        return { text: 'Em Análise', color: 'bg-blue-50 text-blue-700 border border-blue-250' };
+        return { text: 'Em Análise', color: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
       case 'resolvido':
         return { text: 'Resolvido', color: 'bg-emerald-50 text-emerald-800 border border-emerald-250' };
       case 'arquivado':
@@ -78,12 +78,12 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
   return (
     <div id="protocol-tracker-section" className="w-full space-y-6 font-sans">
       {/* Title block */}
-      <div className="rounded-3xl bg-gradient-to-br from-blue-600 to-blue-700 p-6 border border-blue-500/15 shadow-sm text-white">
+      <div className="rounded-3xl bg-gradient-to-br from-emerald-700 to-emerald-800 p-6 border border-emerald-500/15 shadow-sm text-white">
         <h2 className="text-xl sm:text-2xl font-extrabold text-white mb-2 flex items-center gap-2">
           <Search className="h-6 w-6 text-white" />
           <span>Consultar Status de Protocolo</span>
         </h2>
-        <p className="text-xs sm:text-sm text-blue-50 leading-relaxed max-w-2xl">
+        <p className="text-xs sm:text-sm text-emerald-50 leading-relaxed max-w-2xl">
           Submeteu um relato anteriormente? Cole o ID gerado abaixo para verificar em tempo real qual é o status de andamento e ler as respostas ou observações anotadas pela CIPA.
         </p>
       </div>
@@ -97,14 +97,14 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
             value={searchId}
             onChange={(e) => setSearchId(e.target.value)}
             placeholder="Cole o código do protocolo (Ex: 8dFasfA8fhSks9WjaoK2)"
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-mono text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/10"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-mono text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/10"
           />
         </div>
         <button
           onClick={() => handleSearch()}
           disabled={loading}
           id="protocol-search-btn"
-          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm shadow-blue-100"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm shadow-emerald-100"
         >
           {loading ? (
             <>
@@ -142,7 +142,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
             <div>
               <div className="flex items-center gap-2.5">
                 <span className="font-mono text-xs text-slate-400 font-bold">PROTOCOLO</span>
-                <span className="font-mono text-sm font-bold text-blue-605">#CIPA-{record.id}</span>
+                <span className="font-mono text-sm font-bold text-emerald-700">#CIPA-{record.id}</span>
               </div>
               <p className="text-[11px] text-slate-405 mt-1 font-medium bg-slate-50 border border-slate-100 inline-block px-1.5 py-0.5 rounded">
                 Registrado em: {record.createdAt?.seconds ? new Date(record.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Agora mesmo'}
@@ -158,15 +158,15 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
           {/* Quick specs */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-50/50 border border-slate-100">
-              <Calendar className="h-5 w-5 text-blue-600" />
+              <Calendar className="h-5 w-5 text-emerald-600" />
               <div>
                 <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Obs.: Data</p>
-                <p className="text-xs font-bold text-slate-700">{record.dateObservation}</p>
+                <p className="text-xs font-bold text-slate-707">{record.dateObservation}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-50/50 border border-slate-100">
-              <MapPin className="h-5 w-5 text-blue-600" />
+              <MapPin className="h-5 w-5 text-emerald-600" />
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Unidade/Setor</p>
                 <p className="text-xs font-bold text-slate-705 truncate" title={record.area}>{record.area}</p>
@@ -174,7 +174,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
             </div>
 
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-50/50 border border-slate-100">
-              <Tag className="h-5 w-5 text-blue-600" />
+              <Tag className="h-5 w-5 text-emerald-600" />
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Categoria</p>
                 <p className="text-xs font-bold text-slate-705 truncate" title={record.category}>{record.category}</p>
@@ -185,7 +185,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
           {/* Content details */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-slate-500 font-bold text-xs select-none">
-              <FileText className="h-4 w-4 text-blue-600" />
+              <FileText className="h-4 w-4 text-emerald-600" />
               <span>DETALHES DO RELATO</span>
             </div>
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 overflow-hidden leading-relaxed text-sm text-slate-700 font-mono whitespace-pre-wrap">
@@ -197,7 +197,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
           <div className="text-xs text-slate-500 border-t border-slate-100 pt-4 flex flex-col sm:flex-row justify-between gap-3 font-medium">
             <div>
               <span className="font-bold text-slate-400 mr-2">Identidade do Autor:</span>
-              <span className={record.isIdentified ? 'text-blue-600 font-extrabold' : 'text-slate-500'}>
+              <span className={record.isIdentified ? 'text-emerald-700 font-extrabold' : 'text-slate-500'}>
                 {record.isIdentified ? `IDENTIFICADO` : `ANÔNIMO (Confidencial)`}
               </span>
             </div>
@@ -212,7 +212,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
           {/* Response text block */}
           <div className="border-t border-slate-100 pt-5 space-y-3">
             <div className="flex items-center gap-2 text-slate-600 font-bold text-xs uppercase tracking-wide">
-              <MessageSquare className="h-4.5 w-4.5 text-blue-600" />
+              <MessageSquare className="h-4.5 w-4.5 text-emerald-600" />
               <span>PARECER / RETORNO DA CIPA</span>
             </div>
 
@@ -230,7 +230,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
               </div>
             ) : (
               <div className="p-4 border border-slate-200 bg-slate-50/50 text-slate-500 rounded-xl leading-normal text-xs font-semibold italic flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-500 animate-pulse" />
+                <Clock className="h-4 w-4 text-emerald-600 animate-pulse" />
                 <span>Nossa mesa diretora está averiguando este protocolo. O parecer será disponibilizado de forma transparente neste espaço assim que for registrado.</span>
               </div>
             )}
