@@ -4,7 +4,7 @@ import {
   Users, ClipboardList, Shield, ShieldAlert, 
   Trash2, Send, Check, AlertCircle, RefreshCw, 
   MessageSquare, UserPlus, Filter, FileText, Calendar, Tag, MapPin, 
-  Download, BarChart2, CheckCircle2, Clock, Plus, Edit3,
+  Download, BarChart2, CheckCircle2, Clock, Plus, Edit3, Activity,
   Palette, UploadCloud, RotateCcw
 } from 'lucide-react';
 import { 
@@ -30,7 +30,7 @@ export default function AdminPanel({
   setCustomLogo
 }: AdminPanelProps) {
   // Tabs
-  const [activeTab, setActiveTab] = useState<'registros' | 'areas' | 'admins' | 'branding'>('registros');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'registros' | 'areas' | 'admins' | 'branding'>('dashboard');
 
   // Loading states
   const [loadingRegistrations, setLoadingRegistrations] = useState<boolean>(true);
@@ -102,6 +102,11 @@ export default function AdminPanel({
   // Filters
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'em_analise' | 'resolvido' | 'arquivado'>('todos');
   const [searchText, setSearchText] = useState<string>('');
+
+  // Dashboard Metrics state
+  const [dashboardPeriod, setDashboardPeriod] = useState<'all' | '7days' | '30days' | 'year'>('all');
+  const [selectedDashboardCategory, setSelectedDashboardCategory] = useState<string | null>(null);
+  const [showExecutiveReport, setShowExecutiveReport] = useState<boolean>(false);
 
   // Auto-connect real-time queries
   useEffect(() => {
@@ -818,6 +823,96 @@ export default function AdminPanel({
   const analysisCount = registrations.filter(r => r.status === 'em_analise').length;
   const resolvedCount = registrations.filter(r => r.status === 'resolvido').length;
 
+  // Compile Dashboard filtered dataset
+  const dashboardFilteredRegs = registrations.filter(reg => {
+    if (dashboardPeriod === 'all') return true;
+    
+    let regSeconds = 0;
+    if (reg.createdAt && typeof reg.createdAt === 'object' && 'seconds' in reg.createdAt) {
+      regSeconds = reg.createdAt.seconds;
+    } else if (reg.createdAt && typeof reg.createdAt === 'number') {
+      regSeconds = reg.createdAt;
+    } else if (reg.dateObservation) {
+      const parts = reg.dateObservation.split('/');
+      if (parts.length === 3) {
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
+        const dt = new Date(y, m, d);
+        regSeconds = Math.floor(dt.getTime() / 1000);
+      }
+    }
+
+    if (!regSeconds) return true;
+    const currentSeconds = Math.floor(Date.now() / 1000);
+    const diffSeconds = currentSeconds - regSeconds;
+
+    if (dashboardPeriod === '7days') return diffSeconds <= 7 * 86400;
+    if (dashboardPeriod === '30days') return diffSeconds <= 30 * 86400;
+    if (dashboardPeriod === 'year') return diffSeconds <= 365 * 86400;
+
+    return true;
+  });
+
+  // KPI Calculations
+  const dbTotal = dashboardFilteredRegs.length;
+  const dbPending = dashboardFilteredRegs.filter(r => r.status === 'pendente').length;
+  const dbAnalysing = dashboardFilteredRegs.filter(r => r.status === 'em_analise').length;
+  const dbResolved = dashboardFilteredRegs.filter(r => r.status === 'resolvido').length;
+  const dbArchived = dashboardFilteredRegs.filter(r => r.status === 'arquivado').length;
+  const dbResolutionRate = dbTotal > 0 ? Math.round(((dbResolved + dbArchived) / dbTotal) * 100) : 0;
+  
+  // Reporter Identity Ratios
+  const anonymousCount = dashboardFilteredRegs.filter(r => !r.isIdentified).length;
+  const identifiedCount = dashboardFilteredRegs.filter(r => r.isIdentified).length;
+  const anonymousPercent = dbTotal > 0 ? Math.round((anonymousCount / dbTotal) * 100) : 0;
+
+  // Category counts and calculations
+  const categoriesMap: { [key: string]: number } = {};
+  dashboardFilteredRegs.forEach(r => {
+    const cat = r.category || 'Não Informado';
+    categoriesMap[cat] = (categoriesMap[cat] || 0) + 1;
+  });
+  const categoriesStats = Object.keys(categoriesMap).map(name => ({
+    name,
+    count: categoriesMap[name],
+  })).sort((a, b) => b.count - a.count);
+  const maxCategoryCount = categoriesStats.length > 0 ? Math.max(...categoriesStats.map(c => c.count)) : 1;
+
+  // Sector density and safety indicators
+  const sectorsMap: { [key: string]: number } = {};
+  dashboardFilteredRegs.forEach(r => {
+    const sec = r.area || 'Setor Não Informado';
+    sectorsMap[sec] = (sectorsMap[sec] || 0) + 1;
+  });
+  const sectorsStats = Object.keys(sectorsMap).map(name => ({
+    name,
+    count: sectorsMap[name],
+  })).sort((a, b) => b.count - a.count);
+  const maxSectorCount = sectorsStats.length > 0 ? Math.max(...sectorsStats.map(s => s.count)) : 1;
+
+  // Response latency tracker
+  let responseTimesCount = 0;
+  let totalResponseTimeSeconds = 0;
+  dashboardFilteredRegs.forEach(r => {
+    if (r.respondedAt && r.createdAt) {
+      let createdSec = 0;
+      let respondedSec = 0;
+      
+      if (typeof r.createdAt === 'object' && 'seconds' in r.createdAt) createdSec = r.createdAt.seconds;
+      else if (typeof r.createdAt === 'number') createdSec = r.createdAt;
+      
+      if (typeof r.respondedAt === 'object' && 'seconds' in r.respondedAt) respondedSec = r.respondedAt.seconds;
+      else if (typeof r.respondedAt === 'number') respondedSec = r.respondedAt;
+
+      if (createdSec && respondedSec && respondedSec >= createdSec) {
+        responseTimesCount++;
+        totalResponseTimeSeconds += (respondedSec - createdSec);
+      }
+    }
+  });
+  const avgResponseHours = responseTimesCount > 0 ? Math.round((totalResponseTimeSeconds / 3600) / responseTimesCount) : null;
+
   const statusTags = (status: Registration['status']) => {
     switch (status) {
       case 'pendente': return 'bg-yellow-50 text-yellow-850 border border-yellow-200 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full';
@@ -843,6 +938,18 @@ export default function AdminPanel({
 
         {/* Tab triggers */}
         <div className="flex bg-slate-100/80 justify-evenly items-center p-1 rounded-2xl w-full sm:w-auto border border-slate-205 flex-wrap gap-1 sm:gap-0">
+          <button
+            onClick={() => { setActiveTab('dashboard'); setErrorMsg(null); }}
+            className={`flex items-center space-x-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+              activeTab === 'dashboard'
+                ? 'bg-emerald-700 text-white shadow-sm shadow-emerald-100'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+            }`}
+          >
+            <BarChart2 className="h-3.5 w-3.5" />
+            <span>Métricas Dashboard</span>
+          </button>
+
           <button
             onClick={() => { setActiveTab('registros'); setErrorMsg(null); }}
             className={`flex items-center space-x-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
@@ -909,6 +1016,384 @@ export default function AdminPanel({
 
       {/* Main panel displays */}
       <AnimatePresence mode="wait">
+        {activeTab === 'dashboard' && (
+          <motion.div
+            key="dashboardTab"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="space-y-6 animate-fade-in"
+          >
+            {/* Top Period Select + Executive Report Actions */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+              <div className="space-y-1 text-left">
+                <h3 className="font-sans font-extrabold text-slate-800 text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-emerald-600 animate-pulse" />
+                  <span>Análise Geral e Estatísticas CIPA</span>
+                </h3>
+                <p className="text-slate-500 text-xs">Visão consolidada de relatos de segurança e metas de resolução da comissão Eldorado.</p>
+              </div>
+
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-202 text-xs font-bold shrink-0">
+                  <button
+                    onClick={() => { setDashboardPeriod('all'); setSelectedDashboardCategory(null); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${dashboardPeriod === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-505 hover:text-slate-700'}`}
+                  >
+                    Tudo
+                  </button>
+                  <button
+                    onClick={() => { setDashboardPeriod('7days'); setSelectedDashboardCategory(null); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${dashboardPeriod === '7days' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-505 hover:text-slate-700'}`}
+                  >
+                    7d
+                  </button>
+                  <button
+                    onClick={() => { setDashboardPeriod('30days'); setSelectedDashboardCategory(null); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${dashboardPeriod === '30days' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-505 hover:text-slate-700'}`}
+                  >
+                    30d
+                  </button>
+                  <button
+                    onClick={() => { setDashboardPeriod('year'); setSelectedDashboardCategory(null); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${dashboardPeriod === 'year' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-505 hover:text-slate-700'}`}
+                  >
+                    Ano
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowExecutiveReport(true)}
+                  className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl cursor-pointer shadow-sm shadow-emerald-100 transition-all w-full md:w-auto hover:scale-101 active:scale-99"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Gerar Relatório Executivo</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2 text-left">
+                <span className="text-[10px] font-extrabold text-slate-400 font-mono tracking-wider block">RELATOS RECEBIDOS</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-slate-800">{dbTotal}</span>
+                  <span className="text-xs text-slate-400 font-semibold font-mono">itens</span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-slate-450 h-full rounded-full" style={{ width: '100%' }}></div>
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2 text-left">
+                <span className="text-[10px] font-extrabold text-yellow-600 font-mono tracking-wider block">PENDENTES</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-yellow-600">{dbPending}</span>
+                  <span className="text-xs text-slate-400 font-semibold font-mono">
+                    {dbTotal > 0 ? Math.round((dbPending / dbTotal) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-yellow-500 h-full rounded-full animate-pulse" style={{ width: `${dbTotal > 0 ? (dbPending / dbTotal) * 100 : 0}%` }}></div>
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2 text-left">
+                <span className="text-[10px] font-extrabold text-emerald-700 font-mono tracking-wider block">EM INVESTIGAÇÃO</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-emerald-700">{dbAnalysing}</span>
+                  <span className="text-xs text-slate-400 font-semibold font-mono">
+                    {dbTotal > 0 ? Math.round((dbAnalysing / dbTotal) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-emerald-750 h-full rounded-full" style={{ width: `${dbTotal > 0 ? (dbAnalysing / dbTotal) * 100 : 0}%` }}></div>
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2 text-left">
+                <span className="text-[10px] font-extrabold text-emerald-600 font-mono tracking-wider block">RESOLVIDOS</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-emerald-600">{dbResolved}</span>
+                  <span className="text-xs text-slate-400 font-semibold font-mono">
+                    {dbTotal > 0 ? Math.round((dbResolved / dbTotal) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-emerald-505 h-full rounded-full" style={{ width: `${dbTotal > 0 ? (dbResolved / dbTotal) * 100 : 0}%` }}></div>
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm col-span-2 lg:col-span-1 space-y-2 bg-emerald-50/15 border-emerald-100 text-left">
+                <span className="text-[10px] font-extrabold text-emerald-800 font-mono tracking-wider block">ÍNDICE DE RESOLUÇÃO</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-emerald-800">{dbResolutionRate}%</span>
+                  <span className="text-[9px] text-emerald-600 font-extrabold uppercase font-mono">Meta: &gt;90%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-emerald-700 h-full rounded-full" style={{ width: `${dbResolutionRate}%` }}></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Bento Dashboard Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Bento 1: Category Distribution */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 lg:col-span-2 text-left">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                  <div className="space-y-0.5">
+                    <h4 className="font-sans font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                      <BarChart2 className="h-4 w-4 text-emerald-600" />
+                      <span>Relação de Risco por Categoria</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">Clique em qualquer barra para analisar os relatos correspondentes.</p>
+                  </div>
+                  <span className="bg-slate-50 px-2.5 py-1 border border-slate-200 rounded-lg text-[9px] font-bold font-mono text-slate-500 uppercase">
+                    Filtro por Risco
+                  </span>
+                </div>
+
+                {categoriesStats.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-xs text-center border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/20">
+                    <AlertCircle className="h-8 w-8 text-slate-300 mb-2" />
+                    <span>Nenhum relato recebido para computar no período selecionado.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {categoriesStats.map((cat, idx) => {
+                      const percentage = Math.round((cat.count / dbTotal) * 100);
+                      const barWidth = Math.max(8, Math.round((cat.count / maxCategoryCount) * 100));
+                      const isSelected = selectedDashboardCategory === cat.name;
+
+                      return (
+                        <div
+                          key={cat.name}
+                          onClick={() => setSelectedDashboardCategory(isSelected ? null : cat.name)}
+                          className={`group p-3 rounded-2xl border cursor-pointer transition-all ${
+                            isSelected 
+                              ? 'border-emerald-500 bg-emerald-50/20 shadow-xs' 
+                              : 'border-transparent hover:border-slate-200 hover:bg-slate-50/50'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center text-xs pb-1.5">
+                            <span className="font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                              <span className="w-5 h-5 flex items-center justify-center rounded-lg bg-slate-150 text-[10px] text-slate-500 font-bold group-hover:bg-emerald-100 group-hover:text-emerald-700 font-mono transition-colors">
+                                {idx + 1}
+                              </span>
+                              {cat.name}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-800 font-extrabold">{cat.count}</span>
+                              <span className="text-slate-400 font-mono text-[10px]">({percentage}%)</span>
+                            </div>
+                          </div>
+
+                          <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                isSelected ? 'bg-emerald-600' : 'bg-emerald-700'
+                              }`} 
+                              style={{ width: `${barWidth}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Bento 2: Hot Sectors and Performance Metrics */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 lg:col-span-1 flex flex-col text-left">
+                <div className="pb-3 border-b border-slate-100 space-y-0.5">
+                  <h4 className="font-sans font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4 text-emerald-600" />
+                    <span>Densidade de Relatos por Setor</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">Classificação de setores com base em conformidades.</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto max-h-[340px] pr-1 space-y-3">
+                  {sectorsStats.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-xs text-center font-mono">
+                      <AlertCircle className="h-6 w-6 text-slate-300 mb-1" />
+                      <span>Sem incidentes setoriais anotados.</span>
+                    </div>
+                  ) : (
+                    sectorsStats.map((sec, idx) => {
+                      const pct = Math.round((sec.count / dbTotal) * 100);
+                      const isHighRisk = sec.count >= 3;
+                      
+                      return (
+                        <div key={sec.name} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 px-1 rounded transition-all">
+                          <div className="space-y-0.5 max-w-[70%]">
+                            <p className="font-bold text-slate-700 truncate">{sec.name}</p>
+                            <span className={`inline-block text-[9px] font-extrabold font-mono uppercase px-1.5 py-0.2 rounded-full ${
+                              isHighRisk ? 'bg-red-50 text-red-600 border border-red-100 animate-pulse' : 'bg-slate-50 text-slate-400'
+                            }`}>
+                              {isHighRisk ? '🛠️ RISCO ALREGADO' : 'RISCO CONTROLADO'}
+                            </span>
+                          </div>
+                          
+                          <div className="text-right flex items-center gap-2">
+                            <span className="font-mono text-[10px] text-slate-400">({pct}%)</span>
+                            <span className={`w-7 h-7 flex items-center justify-center rounded-xl text-xs font-black font-mono border ${
+                              isHighRisk ? 'bg-red-50 text-red-750 border-red-200' : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {sec.count}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Performance indicators */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3 pt-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-extrabold text-slate-400 font-mono">ATENDIMENTO SST</span>
+                    <span className="text-[10px] font-extrabold text-emerald-700 font-mono uppercase">NR-5 / CIPA</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-slate-400" />
+                      Média Resposta:
+                    </span>
+                    <span className="font-bold text-slate-800">
+                      {avgResponseHours ? `${avgResponseHours} horas` : 'Em análise'}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5 text-slate-400" />
+                      Status Anônimo:
+                    </span>
+                    <span className="font-bold text-slate-800">
+                      {anonymousPercent}% Anônimos
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Breakdown detailed list of specific category selection */}
+            {selectedDashboardCategory && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-emerald-50/5 border border-emerald-250 rounded-3xl p-6 shadow-sm space-y-4"
+              >
+                <div className="flex justify-between items-center pb-3 border-b border-emerald-150">
+                  <div className="space-y-0.5 text-left">
+                    <h4 className="font-sans font-bold text-slate-800 text-sm">
+                      Relatos na Categoria: <span className="font-black text-emerald-800 underline">{selectedDashboardCategory}</span>
+                    </h4>
+                    <p className="text-[11px] text-emerald-600/80">Listando relatos filtrados por relevância de risco.</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedDashboardCategory(null)}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
+                  >
+                    Fechar Filtro ✕
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {dashboardFilteredRegs
+                    .filter(r => r.category === selectedDashboardCategory)
+                    .map(reg => (
+                      <div key={reg.id} className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-3 text-left">
+                        <div className="flex justify-between items-center">
+                          <span className="font-mono text-[9px] font-bold text-slate-400">#CIPA-{reg.id?.substring(0,8)}</span>
+                          <span className={statusTags(reg.status)}>
+                            {reg.status === 'pendente' && '📋 Pendente'}
+                            {reg.status === 'em_analise' && '⚙️ Em Análise'}
+                            {reg.status === 'resolvido' && '✅ Resolvido'}
+                            {reg.status === 'arquivado' && '📦 Arquivado'}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800 truncate">{reg.area}</p>
+                          <p className="text-[10px] text-slate-450 mt-0.5">Data: {reg.dateObservation}</p>
+                        </div>
+                        <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed bg-slate-50/50 p-2.5 rounded-xl">
+                          {reg.info}
+                        </p>
+                        {reg.adminNotes && (
+                          <div className="border-t border-slate-100 pt-2 text-left">
+                            <span className="text-[9px] font-extrabold text-emerald-700 uppercase font-mono">Ação Tomada:</span>
+                            <p className="text-[11px] text-slate-500 line-clamp-2 italic">{reg.adminNotes}</p>
+                          </div>
+                        )}
+                        <button
+                          onClick={() => {
+                            setActiveTab('registros');
+                            setSelectedReg(reg);
+                            setAdminNotesText(reg.adminNotes || '');
+                          }}
+                          className="w-full text-center py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-emerald-700 text-[10px] font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                        >
+                          Gerenciar no Feed de Relatos →
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Audit Trail: Recent Safety Accomplishments */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="pb-3 border-b border-slate-100 space-y-0.5 text-left">
+                <h4 className="font-sans font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 animate-bounce" />
+                  <span>Ações Preventivas Solucionadas (NR-5)</span>
+                </h4>
+                <p className="text-[11px] text-slate-400">Últimas ações preventivas e mitigadoras auditadas pelos administradores.</p>
+              </div>
+
+              <div className="space-y-4">
+                {dashboardFilteredRegs.filter(r => r.status === 'resolvido').slice(0, 3).length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-xs">
+                    Sem registros reportados como 'Resolvido' no período selecionado.
+                  </div>
+                ) : (
+                  dashboardFilteredRegs
+                    .filter(r => r.status === 'resolvido')
+                    .slice(0, 3)
+                    .map((item) => (
+                      <div key={item.id} className="p-4.5 rounded-2xl bg-emerald-50/5 border border-emerald-100 text-xs flex gap-3 items-start flex-col sm:flex-row justify-between">
+                        <div className="space-y-1.5 text-left max-w-[85%]">
+                          <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span className="font-mono text-[9px] font-extrabold text-slate-400 uppercase">RESOLVIDO</span>
+                            <span>{item.area}</span>
+                          </p>
+                          <p className="text-slate-500 leading-relaxed text-xs line-clamp-2 font-medium">
+                            <strong>Relato CIPA:</strong> "{item.info}"
+                          </p>
+                          <p className="text-slate-850 font-bold text-xs leading-relaxed bg-emerald-50/30 p-2 rounded-xl mt-1">
+                            <strong>Ação Resolutiva Aplicada:</strong> "{item.adminNotes}"
+                          </p>
+                        </div>
+
+                        <div className="text-left sm:text-right text-[10px] font-mono font-medium text-slate-400 shrink-0 self-end sm:self-center gap-1 flex flex-col">
+                          <span>Executor: <strong className="text-slate-650">{item.respondedBy || 'Jackson Santos'}</strong></span>
+                          <span>Data Relato: {item.dateObservation}</span>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
+          </motion.div>
+        )}
+
         {activeTab === 'registros' && (
           <motion.div
             key="feedbacksTab"
@@ -1540,6 +2025,7 @@ export default function AdminPanel({
                 </div>
               </div>
             </div>
+
           </motion.div>
         )}
       </AnimatePresence>
@@ -1602,6 +2088,173 @@ export default function AdminPanel({
                   }`}
                 >
                   {confirmConfig.confirmText || "Confirmar"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Executive Report Print Modal */}
+      <AnimatePresence>
+        {showExecutiveReport && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 overflow-y-auto">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowExecutiveReport(false)}
+              className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs"
+            />
+
+            {/* Document body block */}
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 15 }}
+              className="relative w-full max-w-4xl bg-white border border-slate-300 rounded-3xl p-8 shadow-2xl z-[1000] my-8 space-y-6 overflow-hidden print:p-0 print:border-0 print:shadow-none printable-area"
+            >
+              {/* Report Header for Eldorado Brazil */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-5 border-b-2 border-slate-900 gap-4">
+                <div className="space-y-1 text-left">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-emerald-600"></span>
+                    <span className="font-mono text-xs font-bold text-slate-500 uppercase tracking-widest">ELDORADO BRASIL CELULOSE</span>
+                  </div>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-905 tracking-tight">RELATÓRIO CONSOLIDADO CIPA (NR-5)</h1>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Sistema SAC - Atendimento e Prevenção de Acidentes de Trabalho</p>
+                </div>
+                <div className="text-left sm:text-right font-mono text-[10px] text-slate-500 space-y-0.5 border-t sm:border-t-0 sm:border-l border-slate-200 pt-3 sm:pt-0 sm:pl-4">
+                  <p><strong>Emissão:</strong> {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
+                  <p><strong>Auditor Responsável:</strong> {currentUserEmail}</p>
+                  <p><strong>Base de Dados:</strong> {isSimulated ? 'Ambiente de Homologação (Simulado)' : 'Produção em Nuvem (SST)'}</p>
+                </div>
+              </div>
+
+              {/* Quick Summary Grid */}
+              <div className="grid grid-cols-4 gap-4 p-4.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <div className="text-center space-y-0.5">
+                  <span className="text-[9px] font-bold font-mono text-slate-400 uppercase font-mono">Total Relatados</span>
+                  <p className="text-2xl font-extrabold text-slate-800">{dbTotal}</p>
+                </div>
+                <div className="text-center space-y-0.5 border-l border-slate-200">
+                  <span className="text-[9px] font-bold font-mono text-yellow-600 uppercase font-mono border-l-0">Pendências de SST</span>
+                  <p className="text-2xl font-extrabold text-yellow-600">{dbPending}</p>
+                </div>
+                <div className="text-center space-y-0.5 border-l border-slate-200">
+                  <span className="text-[9px] font-bold font-mono text-emerald-700 uppercase font-mono border-l-0">Investigações</span>
+                  <p className="text-2xl font-extrabold text-emerald-700">{dbAnalysing}</p>
+                </div>
+                <div className="text-center space-y-0.5 border-l border-slate-200">
+                  <span className="text-[9px] font-bold font-mono text-emerald-500 uppercase font-mono border-l-0 border-r-0">Resolvidos / Arq</span>
+                  <p className="text-2xl font-extrabold text-emerald-500">{dbResolved + dbArchived}</p>
+                </div>
+              </div>
+
+              {/* Categories & Sectors side-by-side details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                {/* Sector analysis */}
+                <div className="space-y-3">
+                  <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1.5 uppercase tracking-wide text-[11px] text-slate-500 text-left">Mapeamento Geográfico de Incidentes</h3>
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b text-slate-450 font-mono text-[9px] font-extrabold uppercase">
+                        <th className="pb-1">Setor / Localização</th>
+                        <th className="pb-1 text-center">Incidências</th>
+                        <th className="pb-1 text-right">Contribuição</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {sectorsStats.slice(0, 5).map((sec) => (
+                        <tr key={sec.name} className="text-slate-705">
+                          <td className="py-2 font-semibold text-slate-700">{sec.name}</td>
+                          <td className="py-2 text-center font-mono font-bold text-slate-800">{sec.count}</td>
+                          <td className="py-2 text-right font-mono text-slate-450">{dbTotal > 0 ? Math.round((sec.count/dbTotal)*100) : 0}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Categories analysis */}
+                <div className="space-y-3">
+                  <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1.5 uppercase tracking-wide text-[11px] text-slate-500 text-left">Gravidade por Categoria de Risco</h3>
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b text-slate-455 font-mono text-[9px] font-extrabold uppercase">
+                        <th className="pb-1">Classificação CIPA</th>
+                        <th className="pb-1 text-center">Contagem</th>
+                        <th className="pb-1 text-right">Percentual</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {categoriesStats.slice(0, 5).map((cat) => (
+                        <tr key={cat.name} className="text-slate-705">
+                          <td className="py-2 font-semibold text-slate-700 truncate max-w-[160px]">{cat.name}</td>
+                          <td className="py-2 text-center font-mono font-bold text-slate-800">{cat.count}</td>
+                          <td className="py-2 text-right font-mono text-slate-450">{dbTotal > 0 ? Math.round((cat.count/dbTotal)*100) : 0}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Unresolved CIPA action items */}
+              <div className="space-y-3">
+                <h3 className="font-extrabold font-sans text-slate-900 border-b pb-1.5 uppercase tracking-wide text-[11px] text-slate-500 text-left">Filas de Medidas Mitigadoras Recomendadas (Pendente / Em Análise)</h3>
+                
+                {dashboardFilteredRegs.filter(r => r.status === 'pendente' || r.status === 'em_analise').length === 0 ? (
+                  <p className="text-slate-500 italic text-xs text-center py-4">Excelente! Não há não-conformidades de SST pendentes nesta triagem.</p>
+                ) : (
+                  <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1 divide-y divide-slate-150">
+                    {dashboardFilteredRegs
+                      .filter(r => r.status === 'pendente' || r.status === 'em_analise')
+                      .slice(0, 5)
+                      .map(reg => (
+                        <div key={reg.id} className="pt-2 flex justify-between items-start text-[11px] gap-4">
+                          <div className="space-y-0.5 text-left max-w-[80%]">
+                            <p className="font-bold text-slate-850">[{reg.area}] {reg.category}</p>
+                            <p className="text-slate-500 leading-relaxed italic truncate">"{reg.info}"</p>
+                          </div>
+                          <span className="bg-yellow-105 border border-yellow-200 text-yellow-850 font-mono text-[8px] font-black uppercase px-2 py-0.5 rounded-full shrink-0">
+                            {reg.status === 'pendente' ? 'Aguardando' : 'Em Análise'}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Formal Validation block */}
+              <div className="pt-8 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-8 text-[11px]">
+                <div className="space-y-1 text-left">
+                  <p className="font-bold text-slate-750 uppercase font-sans">Comissão CIPA Eldorado Brasil</p>
+                  <p className="text-slate-500 leading-relaxed font-sans">Este documento é gerado de forma sistêmica e as ações estão em conformidade com as diretivas regulamentares da NR-5 de Segurança e Medicina do Trabalho.</p>
+                </div>
+                <div className="flex flex-col items-center justify-end space-y-1 pt-6 md:pt-0">
+                  <div className="w-48 border-b border-slate-400"></div>
+                  <p className="font-semibold text-slate-700 font-sans">Comissão de Segurança CIPA / SESMT</p>
+                </div>
+              </div>
+
+              {/* Printing guidance / Close CTA */}
+              <div className="flex gap-3 justify-end items-center pt-4 border-t border-slate-100 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Imprimir Relatório (PDF)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExecutiveReport(false)}
+                  className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all active:scale-95"
+                >
+                  Fechar Visualização
                 </button>
               </div>
             </motion.div>

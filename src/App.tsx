@@ -1039,6 +1039,7 @@ export default function App() {
 
       {/* Persistent Legal CIPA Footer */}
       <Footer />
+
     </div>
   );
 }
