@@ -786,7 +786,7 @@ export default function App() {
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center select-none">
                         <label className="text-xs font-bold text-slate-500 block">E-mail Administrativo</label>
-                        {emailCheckStatus === 'checking' && <span className="text-[10px] text-blue-500 animate-pulse font-bold">Verificando...</span>}
+                        {emailCheckStatus === 'checking' && <span className="text-[10px] text-emerald-600 animate-pulse font-bold">Verificando...</span>}
                         {emailCheckStatus === 'authorized' && <span className="text-[10px] text-emerald-600 font-bold">● E-mail Credenciado</span>}
                         {emailCheckStatus === 'unauthorized' && <span className="text-[10px] text-red-650 font-bold">● Não Autorizado</span>}
                       </div>
@@ -838,7 +838,7 @@ export default function App() {
                       <div className="space-y-1.5">
                         <div className="flex justify-between items-center select-none">
                           <label className="text-xs font-bold text-slate-500 block">E-mail de Convite CIPA</label>
-                          {emailCheckStatus === 'checking' && <span className="text-[10px] text-blue-500 animate-pulse font-bold">Verificando...</span>}
+                          {emailCheckStatus === 'checking' && <span className="text-[10px] text-emerald-600 animate-pulse font-bold">Verificando...</span>}
                           {emailCheckStatus === 'authorized' && <span className="text-[10px] text-emerald-600 font-bold">● E-mail Autorizado</span>}
                           {emailCheckStatus === 'unauthorized' && <span className="text-[10px] text-red-650 font-bold">● Entrada somente para autorizado</span>}
                         </div>
@@ -917,7 +917,7 @@ export default function App() {
                       <div className="space-y-1.5">
                         <div className="flex justify-between items-center select-none">
                           <label className="text-xs font-bold text-slate-505 block">E-mail do Comitê</label>
-                          {emailCheckStatus === 'checking' && <span className="text-[10px] text-blue-500 animate-pulse font-bold">Verificando...</span>}
+                          {emailCheckStatus === 'checking' && <span className="text-[10px] text-emerald-600 animate-pulse font-bold">Verificando...</span>}
                           {emailCheckStatus === 'authorized' && <span className="text-[10px] text-emerald-600 font-bold">● E-mail Autorizado</span>}
                           {emailCheckStatus === 'unauthorized' && <span className="text-[10px] text-red-650 font-bold uppercase tracking-wider">● Entrada somente para autorizado</span>}
                         </div>

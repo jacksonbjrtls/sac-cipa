@@ -9,10 +9,10 @@ import {
 } from 'lucide-react';
 import { 
   collection, doc, onSnapshot, setDoc, 
-  updateDoc, deleteDoc, serverTimestamp, query, orderBy
+  updateDoc, deleteDoc, serverTimestamp, query, orderBy, addDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../firebase';
-import { Registration, DbAdmin, OperationType } from '../types';
+import { Registration, DbAdmin, OperationType, SystemLog } from '../types';
 import { AREAS_LIST } from '../areas';
 import CipaLogo from './CipaLogo';
 
@@ -30,17 +30,49 @@ export default function AdminPanel({
   setCustomLogo
 }: AdminPanelProps) {
   // Tabs
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'registros' | 'areas' | 'admins' | 'branding'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'registros' | 'areas' | 'admins' | 'branding' | 'logs'>('dashboard');
 
   // Loading states
   const [loadingRegistrations, setLoadingRegistrations] = useState<boolean>(true);
   const [loadingAdmins, setLoadingAdmins] = useState<boolean>(true);
   const [loadingAreas, setLoadingAreas] = useState<boolean>(true);
+  const [loadingLogs, setLoadingLogs] = useState<boolean>(true);
 
   // Firestore lists
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [adminsList, setAdminsList] = useState<DbAdmin[]>([]);
   const [areasList, setAreasList] = useState<{ id: string, name: string }[]>([]);
+  const [logsList, setLogsList] = useState<SystemLog[]>([]);
+
+  // Function to register system activity
+  const logSystemAction = async (action: string, description: string) => {
+    try {
+      if (isSimulated) {
+        const stored = localStorage.getItem('cipa_system_logs');
+        const list = stored ? JSON.parse(stored) : [];
+        const newLog: SystemLog = {
+          id: `LOG-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+          email: currentUserEmail,
+          action,
+          description,
+          timestamp: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
+        };
+        list.unshift(newLog);
+        localStorage.setItem('cipa_system_logs', JSON.stringify(list));
+        setLogsList(list);
+      } else {
+        await addDoc(collection(db, 'system_logs'), {
+          email: currentUserEmail,
+          action,
+          description,
+          timestamp: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error('Falha ao registrar log:', err);
+    }
+  };
+
 
   // Errors / Success Messages
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -99,6 +131,286 @@ export default function AdminPanel({
   const [adminNotesText, setAdminNotesText] = useState<string>('');
   const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
 
+  // CSV Import related states
+  const [showImportCsvSection, setShowImportCsvSection] = useState<boolean>(false);
+  const [csvParsedRows, setCsvParsedRows] = useState<any[]>([]);
+  const [csvParseError, setCsvParseError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [csvFileName, setCsvFileName] = useState<string>('');
+
+  const parseCSV = (text: string) => {
+    const lines = text.split(/\r?\n/);
+    if (lines.length === 0) return { results: [], separator: ';' };
+
+    const firstLine = lines[0] || '';
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const separator = semicolonCount > commaCount ? ';' : ',';
+
+    const parseCSVLine = (line: string) => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === separator && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim()
+      .replace(/^["']|["']$/g, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/\s+/g, '_')
+    );
+
+    const results: any[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const values = parseCSVLine(line).map(v => v.replace(/^["']|["']$/g, '').trim());
+      
+      const row: any = {};
+      headers.forEach((header, idx) => {
+        if (header) {
+          row[header] = values[idx] || '';
+        }
+      });
+      results.push(row);
+    }
+    return { results, separator };
+  };
+
+  const mapParsedRowToRegistration = (row: any): Registration => {
+    const getValue = (keys: string[]) => {
+      for (const k of keys) {
+        if (row[k] !== undefined) return row[k];
+      }
+      return '';
+    };
+
+    const dateVal = getValue(['data_observacao', 'data', 'date_observation', 'date']);
+    const categoryVal = getValue(['categoria', 'category', 'tipo']);
+    const sectorVal = getValue(['area', 'setor', 'department']);
+    const infoVal = getValue(['informacao', 'descricao', 'info', 'description']);
+    const isIdentifiedVal = getValue(['identificado', 'identified', 'anonimo', 'anonymous']);
+    const nameVal = getValue(['nome', 'name']);
+    const emailVal = getValue(['email', 'e_mail']);
+    const phoneVal = getValue(['telefone', 'phone', 'celular']);
+    const agreeToShareVal = getValue(['compartilhar_dados', 'agreed_to_share', 'compartilhar', 'divulgar']);
+    const statusVal = getValue(['status', 'situacao']);
+    const adminNotesVal = getValue(['parecer_cipa', 'admin_notes', 'parecer', 'notas']);
+
+    // Date formatter dd/MM/yyyy
+    let dateStr = dateVal;
+    if (!dateStr) {
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      dateStr = `${dd}/${mm}/${yyyy}`;
+    }
+
+    // Identified logic
+    let isId = true;
+    if (isIdentifiedVal !== undefined) {
+      const cleanId = String(isIdentifiedVal).toLowerCase().trim();
+      if (cleanId === 'false' || cleanId === 'nao' || cleanId === 'não' || cleanId === 'anonimo' || cleanId === 'anônimo') {
+        isId = false;
+      }
+    } else {
+      isId = !!nameVal;
+    }
+
+    // Agree logic
+    let agree = true;
+    if (agreeToShareVal !== undefined) {
+      const cleanAg = String(agreeToShareVal).toLowerCase().trim();
+      if (cleanAg === 'false' || cleanAg === 'nao' || cleanAg === 'não') {
+        agree = false;
+      }
+    }
+
+    // Status logic
+    let sVal: 'pendente' | 'em_analise' | 'resolvido' | 'arquivado' = 'pendente';
+    if (statusVal) {
+      const s = String(statusVal).toLowerCase().trim();
+      if (s === 'em_analise' || s === 'analise' || s === 'investigacao' || s === 'investigação' || s === '⚙️') {
+        sVal = 'em_analise';
+      } else if (s === 'resolvido' || s === 'concluido' || s === 'concluído' || s === 'resolvida' || s === '✅') {
+        sVal = 'resolvido';
+      } else if (s === 'arquivado' || s === 'arquivada' || s === 'rejeitado' || s === 'rejeitada' || s === 'fechado' || s === '📦') {
+        sVal = 'arquivado';
+      }
+    }
+
+    return {
+      dateObservation: dateStr,
+      category: categoryVal || '💡Sugestão',
+      area: sectorVal || 'Outra',
+      info: infoVal || 'Relato sem descrição importado via planilha.',
+      isIdentified: isId,
+      name: isId ? (nameVal || 'Colaborador Anônimo') : '',
+      email: isId ? (emailVal || '') : '',
+      phone: isId ? (phoneVal || '') : '',
+      agreedToShare: agree,
+      status: sVal,
+      adminNotes: adminNotesVal || '',
+      createdAt: serverTimestamp(),
+    };
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    setCsvParseError(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) {
+        setCsvParseError('O arquivo selecionado está vazio.');
+        return;
+      }
+      try {
+        const { results } = parseCSV(text);
+        if (results.length === 0) {
+          setCsvParseError('Nenhum dado pôde ser extraído deste arquivo CSV.');
+          return;
+        }
+        setCsvParsedRows(results);
+      } catch (err: any) {
+        setCsvParseError(`Erro ao interpretar planilha: ${err.message}`);
+      }
+    };
+    reader.onerror = () => {
+      setCsvParseError('Houve um erro físico ao ler o arquivo.');
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const downloadCSVTemplate = () => {
+    const headers = [
+      'data_observacao',
+      'categoria',
+      'area',
+      'informacao',
+      'identificado',
+      'nome',
+      'email',
+      'telefone',
+      'compartilhar_dados',
+      'status',
+      'parecer_cipa'
+    ];
+    
+    const examples = [
+      [
+        '26/05/2026',
+        '⚠️Relato de Condição Insegura',
+        'Manutenção Mecânica',
+        'Vazamento de óleo na prensa hidráulica gerando piso extremamente escorregadio.',
+        'sim',
+        'João dos Santos',
+        'joao.santos@exemplo.com.br',
+        '(11) 99999-1111',
+        'sim',
+        'pendente',
+        ''
+      ],
+      [
+        '25/05/2026',
+        '💡Sugestão',
+        'Logística de Celulose',
+        'Instalar maior iluminação na área de descarregamento noturno dos caminhões para maior segurança.',
+        'não',
+        '',
+        '',
+        '',
+        'sim',
+        'em_analise',
+        'Análise de viabilidade solicitada para equipe de elétrica.'
+      ]
+    ];
+
+    const csvContent = [
+      headers.join(';'),
+      ...examples.map(row => row.map(cell => {
+        const val = String(cell).replace(/"/g, '""');
+        return val.includes(';') || val.includes('\n') || val.includes('"') ? `"${val}"` : val;
+      }).join(';'))
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'modelo_importacao_cipa.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCSVImportSubmit = async () => {
+    if (csvParsedRows.length === 0) return;
+    setIsImporting(true);
+    let successCount = 0;
+    
+    try {
+      if (isSimulated) {
+        const stored = localStorage.getItem('cipa_mock_registrations');
+        const list = stored ? JSON.parse(stored) : [];
+        for (const rawRow of csvParsedRows) {
+          const parsedReg = mapParsedRowToRegistration(rawRow);
+          const newId = `REG-IMPORT-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+          const newReg = {
+            ...parsedReg,
+            id: newId,
+            createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any,
+            respondedAt: parsedReg.adminNotes ? { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any : undefined,
+            respondedBy: parsedReg.adminNotes ? currentUserEmail : undefined,
+          };
+          list.unshift(newReg);
+          successCount++;
+        }
+        localStorage.setItem('cipa_mock_registrations', JSON.stringify(list));
+        setRegistrations(list);
+      } else {
+        for (const rawRow of csvParsedRows) {
+          const parsedReg = mapParsedRowToRegistration(rawRow);
+          const payload = {
+            ...parsedReg,
+            createdAt: serverTimestamp(),
+            respondedAt: parsedReg.adminNotes ? serverTimestamp() : null,
+            respondedBy: parsedReg.adminNotes ? currentUserEmail : null,
+          };
+          await addDoc(collection(db, 'registrations'), payload);
+          successCount++;
+        }
+      }
+      
+      setSuccessMsg(`Importação realizada com sucesso! ${successCount} relatos foram adicionados.`);
+      setCsvParsedRows([]);
+      setCsvFileName('');
+      setCsvParseError(null);
+      setShowImportCsvSection(false);
+    } catch (err: any) {
+      console.error("Error during import:", err);
+      setErrorMsg(`Erro ao processar importação: ${err.message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   // Filters
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'em_analise' | 'resolvido' | 'arquivado'>('todos');
   const [searchText, setSearchText] = useState<string>('');
@@ -114,6 +426,7 @@ export default function AdminPanel({
       setLoadingRegistrations(true);
       setLoadingAdmins(true);
       setLoadingAreas(true);
+      setLoadingLogs(true);
       setErrorMsg(null);
 
       // Load mock registrations or seed default ones
@@ -212,10 +525,31 @@ export default function AdminPanel({
       setAreasList(parsedAreas);
       setLoadingAreas(false);
 
+      // Load mock logs or seed default
+      const storedLogs = localStorage.getItem('cipa_system_logs');
+      let parsedLogs: SystemLog[] = [];
+      if (storedLogs) {
+        parsedLogs = JSON.parse(storedLogs);
+      } else {
+        parsedLogs = [
+          {
+            id: 'LOG-INIT',
+            email: 'jacksonbjr@gmail.com',
+            action: 'Inicialização do Sistema',
+            description: 'Painel administrativo da CIPA inicializado pelo usuário Master.',
+            timestamp: { seconds: Math.floor(Date.now() / 1000) - 3600, nanoseconds: 0 } as any
+          }
+        ];
+        localStorage.setItem('cipa_system_logs', JSON.stringify(parsedLogs));
+      }
+      setLogsList(parsedLogs);
+      setLoadingLogs(false);
+
       return;
     }
 
     setLoadingRegistrations(true);
+    setLoadingLogs(true);
     setErrorMsg(null);
 
     // Setup active listeners for registrations (newest first)
@@ -296,10 +630,25 @@ export default function AdminPanel({
       setLoadingAreas(false);
     });
 
+    // Realtime listener for system activity logs (visible only to Master)
+    const qLogs = query(collection(db, 'system_logs'), orderBy('timestamp', 'desc'));
+    const unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
+      const logs: SystemLog[] = [];
+      snapshot.forEach((doc) => {
+        logs.push({ id: doc.id, ...doc.data() } as SystemLog);
+      });
+      setLogsList(logs);
+      setLoadingLogs(false);
+    }, (err) => {
+      console.error('Erro ao escutar logs:', err);
+      setLoadingLogs(false);
+    });
+
     return () => {
       unsubscribeRegs();
       unsubscribeAdmins();
       unsubscribeAreas();
+      unsubscribeLogs();
     };
   }, []);
 
@@ -334,6 +683,8 @@ export default function AdminPanel({
         setSuccessMsg("Relato atualizado com sucesso e notas registradas!");
       }
       
+      await logSystemAction('Atualizar Relato', `Atualizou o relato #${selectedReg.id || ''} para o status "${status}" com as notas de acompanhamento.`);
+
       // Clear message after 3 seconds
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err) {
@@ -371,6 +722,9 @@ export default function AdminPanel({
             setSelectedReg(null);
             setSuccessMsg("Relato excluído permanentemente com sucesso.");
           }
+
+          await logSystemAction('Excluir Relato', `Excluiu permanentemente o relato #${id} do banco de dados.`);
+
           setTimeout(() => setSuccessMsg(null), 3500);
         } catch (err) {
           console.error(err);
@@ -1430,6 +1784,182 @@ export default function AdminPanel({
                   <span className="text-slate-400 text-xs font-semibold">/ {totalCount > 0 ? Math.round((resolvedCount/totalCount)*100) : 0}%</span>
                 </div>
               </div>
+            </div>
+
+            {/* CSV Import Banner/Section */}
+            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 p-5 rounded-3xl shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                    <FileText className="h-4.5 w-4.5 text-emerald-600 animate-pulse" />
+                    Importação de Relatos por Lote (Planilha Excel/CSV)
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Importe dezenas de relatos históricos retroativos de uma só vez utilizando nossa planilha modelo de segurança.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    onClick={downloadCSVTemplate}
+                    className="p-2 px-3.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-705 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer shadow-xs"
+                  >
+                    <Download className="h-3.5 w-3.5 text-emerald-650" />
+                    Baixar Modelo CSV
+                  </button>
+                  <button
+                    onClick={() => setShowImportCsvSection(!showImportCsvSection)}
+                    className={`p-2 px-3.5 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer shadow-xs ${
+                      showImportCsvSection 
+                        ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' 
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    <UploadCloud className="h-3.5 w-3.5" />
+                    {showImportCsvSection ? 'Ocultar Planilha' : 'Importar Planilha'}
+                  </button>
+                </div>
+              </div>
+
+              {showImportCsvSection && (
+                <div className="bg-white border border-emerald-100 p-5 rounded-2xl space-y-4 transition-all animate-fadeIn">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Drag and Drop Zone */}
+                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-emerald-400 p-6 rounded-2xl transition-all bg-slate-50/50">
+                      <UploadCloud className="h-8 w-8 text-slate-400 mb-2.5" />
+                      <p className="text-xs font-bold text-slate-700 mb-1 leading-normal text-center">
+                        Arraste ou escolha sua planilha CSV aqui
+                      </p>
+                      <p className="text-[10px] text-slate-400 mb-4 text-center leading-normal">
+                        Mapeamento automático de cabeçalhos e suporte a acentos brasileiros (UTF-8).
+                      </p>
+                      <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl transition-all border border-slate-200 select-none shadow-3xs active:scale-95">
+                        Selecionar Arquivo
+                        <input
+                          type="file"
+                          accept=".csv"
+                          className="hidden"
+                          onChange={handleFileChange}
+                        />
+                      </label>
+                      {csvFileName && (
+                        <p className="mt-2.5 font-mono text-[10px] font-bold text-emerald-650 bg-emerald-50 px-2 py-0.5 rounded-md text-center">
+                          📄 {csvFileName}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Mapping specs guidance */}
+                    <div className="space-y-2.5 text-xs text-slate-505 leading-relaxed bg-slate-50/30 p-4 rounded-xl border border-slate-100">
+                      <p className="font-bold text-slate-700">Colunas identificadas automaticamente:</p>
+                      <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-500 font-mono">
+                        <li><strong>data_observacao:</strong> ex: 26/05/2026</li>
+                        <li><strong>categoria:</strong> ex: Sugestão, Condição Insegura, etc.</li>
+                        <li><strong>area:</strong> setor correspondente cadastrado</li>
+                        <li><strong>informacao:</strong> o relato detalhado</li>
+                        <li><strong>identificado:</strong> sim ou nao</li>
+                        <li><strong>nome, email, telefone:</strong> dados se identificado</li>
+                        <li><strong>compartilhar_dados:</strong> sim ou nao</li>
+                        <li><strong>status:</strong> pendente, em_analise, resolvido</li>
+                        <li><strong>parecer_cipa:</strong> resposta oficial (opcional)</li>
+                      </ul>
+                      <p className="text-[10px] text-amber-700 italic font-sans leading-normal">
+                        * Dica: Baixe nossa planilha modelo de importação para ter certeza que todas as colunas estão idênticas!
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Parse error display */}
+                  {csvParseError && (
+                    <div className="bg-red-50 border border-red-200 text-red-905 p-3.5 rounded-2xl text-xs flex items-center gap-2">
+                      <AlertCircle className="h-4.5 w-4.5 text-red-650 shrink-0" />
+                      <p className="font-semibold">{csvParseError}</p>
+                    </div>
+                  )}
+
+                  {/* Preview list of Parsed Records */}
+                  {csvParsedRows.length > 0 && (
+                    <div className="space-y-3.5 border-t border-slate-100 pt-4">
+                      <div className="flex justify-between items-center bg-slate-50/50 p-2.5 rounded-xl">
+                        <span className="text-xs font-bold text-slate-700">
+                          {csvParsedRows.length} relatos carregados
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setCsvParsedRows([]);
+                              setCsvFileName('');
+                              setCsvParseError(null);
+                            }}
+                            className="bg-transparent hover:bg-slate-100 text-slate-500 text-[10px] font-bold px-2.5 py-1.5 rounded-lg active:scale-95 cursor-pointer uppercase select-none"
+                          >
+                            Limpar
+                          </button>
+                          <button
+                            onClick={handleCSVImportSubmit}
+                            disabled={isImporting}
+                            className="bg-emerald-650 hover:bg-emerald-700 text-white text-[10px] font-bold px-4 py-1.5 rounded-lg inline-flex items-center gap-1 active:scale-95 cursor-pointer uppercase select-none disabled:opacity-50"
+                          >
+                            {isImporting ? (
+                              <>
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                                Salvando...
+                              </>
+                            ) : (
+                              <>
+                                <Check className="h-3 w-3" />
+                                Gravar no Banco de Dados
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-100 rounded-xl max-h-48 overflow-y-auto">
+                        <table className="w-full text-left border-collapse text-[10px]">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-secondary/15 font-bold text-slate-500 font-mono">
+                              <th className="p-2">Data</th>
+                              <th className="p-2">Categoria</th>
+                              <th className="p-2">Área (Setor)</th>
+                              <th className="p-2">Relato / Descrição</th>
+                              <th className="p-2">Identificado</th>
+                              <th className="p-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {csvParsedRows.slice(0, 5).map((row, idx) => {
+                              const r = mapParsedRowToRegistration(row);
+                              return (
+                                <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/35">
+                                  <td className="p-2 font-mono whitespace-nowrap">{r.dateObservation}</td>
+                                  <td className="p-2 whitespace-nowrap font-medium">{r.category}</td>
+                                  <td className="p-2 whitespace-nowrap">{r.area}</td>
+                                  <td className="p-2 truncate max-w-xs font-sans">{r.info}</td>
+                                  <td className="p-2 font-mono whitespace-nowrap">{r.isIdentified ? `Sim (${r.name?.substring(0, 15)}...)` : 'Não (Anônimo)'}</td>
+                                  <td className="p-2 whitespace-nowrap">
+                                    <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] uppercase tracking-wide font-mono ${
+                                      r.status === 'pendente' ? 'bg-yellow-50 text-yellow-700' :
+                                      r.status === 'em_analise' ? 'bg-sky-50 text-sky-700' :
+                                      r.status === 'resolvido' ? 'bg-emerald-50 text-emerald-705' : 'bg-slate-50 text-slate-700'
+                                    }`}>
+                                      {r.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {csvParsedRows.length > 5 && (
+                          <div className="bg-slate-50 text-slate-450 p-2 text-center text-[9px] font-mono font-medium border-t border-slate-100">
+                            E mais {csvParsedRows.length - 5} linhas carregadas nesta planilha...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Filter controls row */}

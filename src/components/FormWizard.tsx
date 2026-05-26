@@ -99,6 +99,30 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
     setFormData(prev => ({ ...prev, dateObservation: formatted }));
   };
 
+  // Auto-format Brazilian phone format dynamic mask (XX) XXXXX-XXXX or (XX) XXXX-XXXX
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, ''); // strip non-digits
+    if (value.length > 11) value = value.slice(0, 11);
+
+    let formatted = '';
+    if (value.length > 0) {
+      formatted += `(${value.slice(0, 2)}`;
+    }
+    if (value.length > 2) {
+      formatted += `) ${value.slice(2, 7)}`;
+    }
+    if (value.length > 7) {
+      if (value.length > 10) {
+        // e.g. 11999999999 -> (11) 99999-9999
+        formatted = `(${value.slice(0, 2)}) ${value.slice(2, 7)}-${value.slice(7, 11)}`;
+      } else {
+        // e.g. 1199999999 -> (11) 9999-9999
+        formatted = `(${value.slice(0, 2)}) ${value.slice(2, 6)}-${value.slice(6, 10)}`;
+      }
+    }
+    setFormData(prev => ({ ...prev, phone: formatted }));
+  };
+
   // Helper to validate the active step before advancing
   const isStepValid = () => {
     switch (step) {
@@ -541,7 +565,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
                           type="text"
                           id="user-phone-input"
                           value={formData.phone}
-                          onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                          onChange={handlePhoneChange}
                           placeholder="(99) 99999-9999"
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-805 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/10"
                         />

@@ -48,3 +48,12 @@ export interface Registration {
   respondedBy?: string;
   respondedAt?: any; // Firestore Timestamp
 }
+
+export interface SystemLog {
+  id?: string;
+  email: string;
+  action: string;
+  description: string;
+  timestamp: any; // Firestore Timestamp or local object / date string
+}
+

@@ -7,7 +7,7 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl font-sans">
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="flex flex-col items-center md:items-start text-center md:text-left max-w-lg">
-            <div className="flex items-center space-x-2 text-blue-600 font-bold text-sm mb-2">
+            <div className="flex items-center space-x-2 text-emerald-600 font-bold text-sm mb-2">
               <LifeBuoy className="h-4 w-4" />
               <span>CIPA - Gestão Ativa de Segurança</span>
             </div>
@@ -29,7 +29,7 @@ export default function Footer() {
 
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
           <div className="flex items-center space-x-1">
-            <HeartHandshake className="h-3.5 w-3.5 text-blue-600" />
+            <HeartHandshake className="h-3.5 w-3.5 text-emerald-600" />
             <span>Colaboração e Confidencialidade garantidas à CIPA.</span>
           </div>
           <div>
