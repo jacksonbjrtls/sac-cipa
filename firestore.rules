@@ -14,9 +14,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        ("email" in request.auth.token && request.auth.token.email.lower() == "jacksonbjr@gmail.com") ||
+        ("email" in request.auth.token && request.auth.token.email.lowerCase() == "jacksonbjr@gmail.com") ||
         ("email" in request.auth.token && (
-          exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())) ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lowerCase())) ||
           exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
         )) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
@@ -79,6 +79,16 @@ service cloud.firestore {
               (request.method == 'update' && data.createdAt == resource.data.createdAt));
     }
 
+    // Log validation helper
+    function isValidLog(data) {
+      return data.keys().hasAll(['email', 'action', 'description', 'timestamp']) &&
+             data.keys().size() == 4 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.action is string && data.action.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.timestamp == request.time;
+    }
+
     match /admins/{adminId} {
       allow get: if true;
       allow list: if isAdmin();
@@ -88,7 +98,7 @@ service cloud.firestore {
     }
 
     match /registrations/{registrationId} {
-      allow create: if isValidRegistration(incoming());
+      allow create: if isAdmin() || isValidRegistration(incoming());
       allow get: if true;
       allow list: if isAdmin();
       allow update: if isAdmin() && isValidRegistration(incoming());
@@ -105,6 +115,11 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow get: if true;
       allow write: if isAdmin() && isValidId(settingId);
+    }
+
+    match /system_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(logId) && isValidLog(incoming());
     }
   }
 }

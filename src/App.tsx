@@ -84,42 +84,8 @@ export default function App() {
           console.log("Seeding of default areas completed successfully!");
         }
 
-        const regsCol = collection(db, 'registrations');
-        const regsSnapshot = await getDocs(regsCol);
-        if (regsSnapshot.empty) {
-          console.log("Auto-seeding default registrations into Firestore as Admin...");
-          const sampleRegs = [
-            {
-              agreedToShare: true,
-              dateObservation: "25/05/2026",
-              isIdentified: true,
-              name: "Jackson Bernardes",
-              email: "jacksonbjr@gmail.com",
-              phone: "62 99999-9999",
-              area: "Almoxarifado Central",
-              category: "Condição Insegura (Riscos no ambiente/infraestrutura)",
-              info: "Identificado que as fiações elétricas expostas na rampa de carregamento representam risco iminente de faíscas devido à umidade recente. Necessária manutenção elétrica preventiva com urgência.",
-              status: "pendente",
-              createdAt: serverTimestamp()
-            },
-            {
-              agreedToShare: true,
-              dateObservation: "24/05/2026",
-              isIdentified: false,
-              area: "Manutenção Mecânica",
-              category: "Incidente ou Quase Acidente",
-              info: "Quase acidente ocorrido ontem de tarde na desmontagem da bomba principal da área de Caustificação. Uma chave de boca caiu de uma altura de 3m sem uso do cordão de segurança. Ninguém foi atingido, mas o risco de lesão grave era extremo.",
-              status: "em_analise",
-              createdAt: serverTimestamp()
-            }
-          ];
-
-          for (const item of sampleRegs) {
-            const regId = doc(regsCol).id;
-            await setDoc(doc(db, 'registrations', regId), item);
-          }
-          console.log("Seeding of default registrations completed successfully!");
-        }
+        // Seeding of areas and admin is retained as they are non-transactional metadata setup,
+        // but transactional registrations are never auto-seeded on emptyness to prevent deleted reports from reappearing.
       } catch (err) {
         console.error("Erro no auto-seeding do banco de dados:", err);
       }

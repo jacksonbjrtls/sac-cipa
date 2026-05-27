@@ -42,6 +42,18 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "When the area was created" }
       },
       "required": ["name", "createdAt"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "System action log recording updates, deletions, and management events",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Email of the admin who performed the action" },
+        "action": { "type": "string", "description": "Action performed in the system" },
+        "description": { "type": "string", "description": "Detailed details or metadata of the action" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the action was performed" }
+      },
+      "required": ["email", "action", "description", "timestamp"]
     }
   },
   "firestore": {
@@ -56,6 +68,10 @@
     "areas/{areaId}": {
       "schema": "Area",
       "description": "Dynamic operating areas and sectors for the submission forms"
+    },
+    "system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "System audit and operation logs for safety verification"
     }
   }
 }

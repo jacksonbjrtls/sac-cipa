@@ -70,6 +70,11 @@ export default function AdminPanel({
       }
     } catch (err) {
       console.error('Falha ao registrar log:', err);
+      try {
+        handleFirestoreError(err, OperationType.CREATE, 'system_logs');
+      } catch (finalError) {
+        // Just report/throw the formatted system error
+      }
     }
   };
 
@@ -130,6 +135,17 @@ export default function AdminPanel({
   const [selectedReg, setSelectedReg] = useState<Registration | null>(null);
   const [adminNotesText, setAdminNotesText] = useState<string>('');
   const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
+  const [isEditingReg, setIsEditingReg] = useState<boolean>(false);
+  const [editingRegData, setEditingRegData] = useState<{
+    area: string;
+    category: string;
+    dateObservation: string;
+    info: string;
+    isIdentified: boolean;
+    name: string;
+    email: string;
+    phone: string;
+  } | null>(null);
 
   // CSV Import related states
   const [showImportCsvSection, setShowImportCsvSection] = useState<boolean>(false);
@@ -139,7 +155,9 @@ export default function AdminPanel({
   const [csvFileName, setCsvFileName] = useState<string>('');
 
   const parseCSV = (text: string) => {
-    const lines = text.split(/\r?\n/);
+    // Strip Byte Order Mark (BOM) if present to prevent header corruption
+    const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
+    const lines = cleanText.split(/\r?\n/);
     if (lines.length === 0) return { results: [], separator: ';' };
 
     const firstLine = lines[0] || '';
@@ -167,6 +185,7 @@ export default function AdminPanel({
     };
 
     const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim()
+      .replace(/^[\uFEFF]/, '') // Ensure any rogue BOM is removed from individual headers
       .replace(/^["']|["']$/g, '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
       .replace(/\s+/g, '_')
@@ -372,13 +391,15 @@ export default function AdminPanel({
         for (const rawRow of csvParsedRows) {
           const parsedReg = mapParsedRowToRegistration(rawRow);
           const newId = `REG-IMPORT-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-          const newReg = {
+          const newReg: any = {
             ...parsedReg,
             id: newId,
             createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any,
-            respondedAt: parsedReg.adminNotes ? { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any : undefined,
-            respondedBy: parsedReg.adminNotes ? currentUserEmail : undefined,
           };
+          if (parsedReg.adminNotes && parsedReg.adminNotes.trim() !== '') {
+            newReg.respondedAt = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any;
+            newReg.respondedBy = currentUserEmail;
+          }
           list.unshift(newReg);
           successCount++;
         }
@@ -387,25 +408,52 @@ export default function AdminPanel({
       } else {
         for (const rawRow of csvParsedRows) {
           const parsedReg = mapParsedRowToRegistration(rawRow);
-          const payload = {
+          const payload: any = {
             ...parsedReg,
             createdAt: serverTimestamp(),
-            respondedAt: parsedReg.adminNotes ? serverTimestamp() : null,
-            respondedBy: parsedReg.adminNotes ? currentUserEmail : null,
           };
+          
+          // Clean up values: if not identified, remove user identity keys entirely
+          if (!payload.isIdentified) {
+            delete payload.name;
+            delete payload.email;
+            delete payload.phone;
+          } else {
+            // Trim values and fall back cleanly
+            if (payload.name) payload.name = payload.name.trim();
+            if (payload.email) payload.email = payload.email.trim();
+            if (payload.phone) payload.phone = payload.phone.trim();
+          }
+
+          // If there are no admin notes, delete adminNotes key so it matches initial manual registrations
+          if (!payload.adminNotes || payload.adminNotes.trim() === '') {
+            delete payload.adminNotes;
+            delete payload.respondedAt;
+            delete payload.respondedBy;
+          } else {
+            payload.adminNotes = payload.adminNotes.trim();
+            payload.respondedAt = serverTimestamp();
+            payload.respondedBy = currentUserEmail;
+          }
+
           await addDoc(collection(db, 'registrations'), payload);
           successCount++;
         }
       }
       
       setSuccessMsg(`Importação realizada com sucesso! ${successCount} relatos foram adicionados.`);
+      await logSystemAction('Importação em Lote', `Importou com sucesso ${successCount} relatos (planilha Excel/CSV).`);
       setCsvParsedRows([]);
       setCsvFileName('');
       setCsvParseError(null);
       setShowImportCsvSection(false);
     } catch (err: any) {
       console.error("Error during import:", err);
-      setErrorMsg(`Erro ao processar importação: ${err.message}`);
+      try {
+        handleFirestoreError(err, OperationType.CREATE, 'registrations');
+      } catch (finalError: any) {
+        setErrorMsg(`Erro ao processar importação: ${finalError.message}`);
+      }
     } finally {
       setIsImporting(false);
     }
@@ -642,6 +690,11 @@ export default function AdminPanel({
     }, (err) => {
       console.error('Erro ao escutar logs:', err);
       setLoadingLogs(false);
+      try {
+        handleFirestoreError(err, OperationType.LIST, 'system_logs');
+      } catch (finalError) {
+        // Just report the formatted system error
+      }
     });
 
     return () => {
@@ -739,6 +792,96 @@ export default function AdminPanel({
       "Excluir",
       "Cancelar"
     );
+  };
+
+  // Edit registration content handler
+  const handleStartEditingReg = (reg: Registration) => {
+    setIsEditingReg(true);
+    setEditingRegData({
+      area: reg.area || '',
+      category: reg.category || '',
+      dateObservation: reg.dateObservation || '',
+      info: reg.info || '',
+      isIdentified: reg.isIdentified ?? false,
+      name: reg.name || '',
+      email: reg.email || '',
+      phone: reg.phone || '',
+    });
+  };
+
+  const handleSaveEditedRegistration = async () => {
+    if (!selectedReg || !editingRegData) return;
+
+    if (!editingRegData.area.trim()) {
+      setErrorMsg("O campo Setor/Área é de preenchimento obrigatório.");
+      return;
+    }
+    if (!editingRegData.category.trim()) {
+      setErrorMsg("O campo Categoria é de preenchimento obrigatório.");
+      return;
+    }
+    if (!editingRegData.dateObservation.trim()) {
+      setErrorMsg("O campo Data do Fato é de preenchimento obrigatório.");
+      return;
+    }
+    if (!editingRegData.info.trim()) {
+      setErrorMsg("O campo Relato / Informação é de preenchimento obrigatório.");
+      return;
+    }
+
+    setUpdatingStatus(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const updatedData: any = {
+      area: editingRegData.area.trim(),
+      category: editingRegData.category.trim(),
+      dateObservation: editingRegData.dateObservation.trim(),
+      info: editingRegData.info.trim(),
+      isIdentified: editingRegData.isIdentified,
+    };
+
+    if (editingRegData.isIdentified) {
+      updatedData.name = editingRegData.name.trim();
+      updatedData.email = editingRegData.email.trim();
+      updatedData.phone = editingRegData.phone.trim();
+    } else {
+      updatedData.name = "";
+      updatedData.email = "";
+      updatedData.phone = "";
+    }
+
+    try {
+      if (isSimulated) {
+        const stored = localStorage.getItem('cipa_mock_registrations');
+        let list: Registration[] = stored ? JSON.parse(stored) : [];
+        list = list.map(item => item.id === selectedReg.id ? { ...item, ...updatedData } : item);
+        localStorage.setItem('cipa_mock_registrations', JSON.stringify(list));
+        setRegistrations(list);
+        setSelectedReg(prev => prev ? { ...prev, ...updatedData } : null);
+        setSuccessMsg("Relato (Simulado) atualizado com sucesso localmente!");
+      } else {
+        const regRef = doc(db, 'registrations', selectedReg.id!);
+        await updateDoc(regRef, updatedData);
+        setSelectedReg(prev => prev ? { ...prev, ...updatedData } : null);
+        setSuccessMsg("Relato atualizado no banco de dados com sucesso!");
+      }
+
+      await logSystemAction('Editar Relato', `Realizou alterações manuais nos dados originais do relato #${selectedReg.id || ''}`);
+      
+      setIsEditingReg(false);
+      setEditingRegData(null);
+      setTimeout(() => setSuccessMsg(null), 3500);
+    } catch (err: any) {
+      console.error(err);
+      try {
+        handleFirestoreError(err, OperationType.UPDATE, `registrations/${selectedReg.id}`);
+      } catch (finalError: any) {
+        setErrorMsg(`Erro ao salvar edições do relato: ${finalError.message}`);
+      }
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   // Add new admin
@@ -1691,6 +1834,8 @@ export default function AdminPanel({
                             setActiveTab('registros');
                             setSelectedReg(reg);
                             setAdminNotesText(reg.adminNotes || '');
+                            setIsEditingReg(false);
+                            setEditingRegData(null);
                           }}
                           className="w-full text-center py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-emerald-700 text-[10px] font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
                         >
@@ -2018,6 +2163,8 @@ export default function AdminPanel({
                       onClick={() => {
                         setSelectedReg(reg);
                         setAdminNotesText(reg.adminNotes || '');
+                        setIsEditingReg(false);
+                        setEditingRegData(null);
                       }}
                       className={`w-full p-4.5 rounded-2xl border transition-all cursor-pointer text-left block space-y-3 ${
                         selectedReg?.id === reg.id
@@ -2056,133 +2203,317 @@ export default function AdminPanel({
                 <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm relative self-start">
                   {selectedReg ? (
                     <div className="space-y-6">
-                      
-                      {/* Workheader */}
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-100">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-slate-400 font-bold uppercase">ACOMPANHAMENTO DOS MEMBROS</span>
-                            <span className="font-mono text-sm font-extrabold text-emerald-700">#CIPA-{selectedReg.id}</span>
-                          </div>
-                          <p className="text-[10px] text-slate-405 mt-1 font-semibold">
-                            Cadastrado em: {selectedReg.createdAt?.seconds ? new Date(selectedReg.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Agora'}
-                          </p>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleDeleteRegistration(selectedReg.id!)}
-                            id="delete-record-btn"
-                            className="bg-red-50 hover:bg-red-105 border border-red-200 text-red-655 p-2 rounded-xl transition-all cursor-pointer"
-                            title="Deletar este registro permanentemente"
-                          >
-                            <Trash2 className="h-4.5 w-4.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Info grid detail cards */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-emerald-600" /> Setor Declarado
-                          </p>
-                          <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.area}</p>
-                        </div>
-                        <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                            <Tag className="h-3 w-3 text-emerald-600" /> Categoria
-                          </p>
-                          <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.category}</p>
-                        </div>
-                        <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                            <Calendar className="h-3 w-3 text-emerald-600" /> Data Fato
-                          </p>
-                          <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.dateObservation}</p>
-                        </div>
-                      </div>
-
-                      {/* Original description */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-450 uppercase tracking-widest block flex items-center gap-1 select-none">
-                          <FileText className="h-3.5 w-3.5 text-emerald-600" /> Relato do Colaborador:
-                        </label>
-                        <div className="bg-slate-50 p-4 border border-slate-205 rounded-xl leading-relaxed text-sm text-slate-700 font-mono whitespace-pre-wrap max-h-[190px] overflow-y-auto">
-                          {selectedReg.info}
-                        </div>
-                      </div>
-
-                      {/* Contact metadata */}
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
-                        <p className="font-bold text-slate-550">Identificação e Contato:</p>
-                        {selectedReg.isIdentified ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-700 font-mono text-[11px] pt-1 border-t border-slate-200/50">
-                            <div><span className="text-slate-400 font-bold font-sans">NOME:</span> {selectedReg.name}</div>
-                            <div><span className="text-slate-400 font-bold font-sans">EMAIL:</span> {selectedReg.email || 'Não informado'}</div>
-                            <div><span className="text-slate-400 font-bold font-sans">TELEFONE:</span> {selectedReg.phone || 'Não informado'}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 font-medium italic">Este relato foi enviado de forma estritamente anônima e confidencial.</span>
-                        )}
-                      </div>
-
-                      {/* Admin update workspace form */}
-                      <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 uppercase block select-none">Mudar Status do Andamento</label>
-                            <p className="text-[10px] text-slate-400 leading-normal">O autor poderá consultar esta resposta em tempo real.</p>
-                          </div>
+                      {isEditingReg && editingRegData ? (
+                        <div className="space-y-4">
+                          <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-1.5">
+                            <Edit3 className="h-4 w-4 text-emerald-600" />
+                            <span>Editar Informações do Relato</span>
+                          </h3>
                           
-                          {/* Status buttons */}
-                          <div id="status-selection-box" className="flex flex-wrap gap-1.5">
-                            {(['pendente', 'em_analise', 'resolvido', 'arquivado'] as const).map(st => (
-                              <button
-                                key={st}
-                                onClick={() => handleUpdateRegistration(st, adminNotesText)}
-                                disabled={updatingStatus}
-                                className={`px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider font-extrabold rounded-xl border cursor-pointer transition-all ${
-                                  selectedReg.status === st
-                                    ? 'bg-emerald-600 text-white font-extrabold border-emerald-600 shadow-sm shadow-emerald-100'
-                                    : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200'
-                                }`}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Setor Declared */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-600">Setor / Área</label>
+                              <select
+                                value={editingRegData.area}
+                                onChange={(e) => setEditingRegData(prev => prev ? { ...prev, area: e.target.value } : null)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 font-sans"
                               >
-                                {st === 'pendente' && '📋 Pendente'}
-                                {st === 'em_analise' && '⚙️ Em Análise'}
-                                {st === 'resolvido' && '✅ Resolvido'}
-                                {st === 'arquivado' && '📦 Arquivado'}
-                              </button>
-                            ))}
+                                <option value="">Selecione um Setor</option>
+                                {areasList.map(a => (
+                                  <option key={a.id} value={a.name}>{a.name}</option>
+                                ))}
+                                {/* In case the original is not in list, add it */}
+                                {editingRegData.area && !areasList.some(a => a.name === editingRegData.area) && (
+                                  <option value={editingRegData.area}>{editingRegData.area}</option>
+                                )}
+                              </select>
+                            </div>
+
+                            {/* Categoria */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-600">Categoria do Relato</label>
+                              <select
+                                value={editingRegData.category}
+                                onChange={(e) => setEditingRegData(prev => prev ? { ...prev, category: e.target.value } : null)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 font-sans"
+                              >
+                                <option value="💡Sugestão (Melhorias no ambiente ou processos)">💡 Sugestão (Melhorias no ambiente ou processos)</option>
+                                <option value="💡Sugestão">💡 Sugestão (Simples)</option>
+                                <option value="📢 Crítica/Reclamação">📢 Crítica ou Reclamação</option>
+                                <option value="❓Dúvida (Sobre EPIs, Procedimentos, Treinamentos, SIPATAMA)">❓ Dúvida (Sobre EPIs, Procedimentos, Treinamentos, SIPATAMA)</option>
+                                <option value="❓Dúvida">❓ Dúvida (Simples)</option>
+                                <option value="⚠️Relato de Condição Insegura (Algo que pode causar Incidente, acidente, Vazamentos ou Incêndio)">⚠️ Condição Insegura (Grave / Vazamentos / Incêndio)</option>
+                                <option value="⚠️Relato de Condição Insegura">⚠️ Condição Insegura (Simples)</option>
+                                <option value="👏Elogio (Reconhecimento de boas práticas)">👏 Elogio (Reconhecimento de boas práticas)</option>
+                                <option value="👏Elogio">👏 Elogio (Simples)</option>
+                                <option value="Assuntos Relacionados ao Meio Ambiente">♻️ Assunto Ambiental</option>
+                                {/* In case the original is not in the select list, show it */}
+                                {editingRegData.category && ![
+                                  "💡Sugestão (Melhorias no ambiente ou processos)", "💡Sugestão", "📢 Crítica/Reclamação",
+                                  "❓Dúvida (Sobre EPIs, Procedimentos, Treinamentos, SIPATAMA)", "❓Dúvida",
+                                  "⚠️Relato de Condição Insegura (Algo que pode causar Incidente, acidente, Vazamentos ou Incêndio)",
+                                  "⚠️Relato de Condição Insegura", "👏Elogio (Reconhecimento de boas práticas)", "👏Elogio",
+                                  "Assuntos Relacionados ao Meio Ambiente"
+                                ].includes(editingRegData.category) && (
+                                  <option value={editingRegData.category}>{editingRegData.category}</option>
+                                )}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Data fato */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-600">Data do Fato (DD/MM/AAAA)</label>
+                              <input
+                                type="text"
+                                placeholder="Ex: 26/05/2026"
+                                value={editingRegData.dateObservation}
+                                onChange={(e) => setEditingRegData(prev => prev ? { ...prev, dateObservation: e.target.value } : null)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 font-mono"
+                              />
+                            </div>
+
+                            {/* Identificação Switch */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-slate-600 block">Identificação</label>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingRegData(prev => prev ? { ...prev, isIdentified: true } : null)}
+                                  className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                                    editingRegData.isIdentified
+                                      ? 'bg-emerald-600 border-emerald-600 text-white font-extrabold shadow-sm shadow-emerald-100'
+                                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800'
+                                  }`}
+                                >
+                                  Identificado
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingRegData(prev => prev ? { ...prev, isIdentified: false } : null)}
+                                  className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                                    !editingRegData.isIdentified
+                                      ? 'bg-emerald-600 border-emerald-600 text-white font-extrabold shadow-sm shadow-emerald-100'
+                                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800'
+                                  }`}
+                                >
+                                  Anônimo
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Se identificado, show fields */}
+                          {editingRegData.isIdentified && (
+                            <div className="bg-amber-50/20 border border-amber-200/50 rounded-2xl p-4 space-y-3">
+                              <p className="text-xs font-extrabold text-amber-800 uppercase tracking-wider">Dados de Contato:</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-slate-550 uppercase">Nome</label>
+                                  <input
+                                    type="text"
+                                    value={editingRegData.name}
+                                    onChange={(e) => setEditingRegData(prev => prev ? { ...prev, name: e.target.value } : null)}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-slate-550 uppercase">E-mail</label>
+                                  <input
+                                    type="email"
+                                    value={editingRegData.email}
+                                    onChange={(e) => setEditingRegData(prev => prev ? { ...prev, email: e.target.value } : null)}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-slate-550 uppercase">Telefone</label>
+                                  <input
+                                    type="text"
+                                    value={editingRegData.phone}
+                                    onChange={(e) => setEditingRegData(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Info Description */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-600">Conteúdo do Relato / Informação</label>
+                            <textarea
+                              rows={5}
+                              value={editingRegData.info}
+                              onChange={(e) => setEditingRegData(prev => prev ? { ...prev, info: e.target.value } : null)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 font-mono leading-relaxed"
+                            />
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsEditingReg(false);
+                                setEditingRegData(null);
+                              }}
+                              className="px-4.5 py-2.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-705 rounded-xl transition-all cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveEditedRegistration}
+                              disabled={updatingStatus}
+                              className="px-4.5 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shadow-emerald-100"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Salvar Alterações</span>
+                            </button>
                           </div>
                         </div>
+                      ) : (
+                        <>
+                          {/* Workheader */}
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-100">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs text-slate-400 font-bold uppercase">ACOMPANHAMENTO DOS MEMBROS</span>
+                                <span className="font-mono text-sm font-extrabold text-emerald-700">#CIPA-{selectedReg.id}</span>
+                              </div>
+                              <p className="text-[10px] text-slate-405 mt-1 font-semibold">
+                                Cadastrado em: {selectedReg.createdAt?.seconds ? new Date(selectedReg.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Agora'}
+                              </p>
+                            </div>
 
-                        {/* Direct feedback notes textarea */}
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-slate-550 uppercase tracking-widest block select-none">Parecer Técnico / Notas de Investigação da CIPA:</label>
-                          <textarea
-                            rows={4}
-                            value={adminNotesText}
-                            onChange={(e) => setAdminNotesText(e.target.value)}
-                            placeholder="Descreva as soluções sugeridas, o andamento das reuniões, vistorias locais de SST ou a resolução..."
-                            className="w-full bg-slate-50 border border-slate-205 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/10"
-                          />
-                        </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleStartEditingReg(selectedReg)}
+                                id="edit-record-btn"
+                                className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 px-3 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                                title="Editar informações do relato"
+                              >
+                                <Edit3 className="h-4 w-4" />
+                                <span>Editar</span>
+                              </button>
 
-                        {/* Save notes button */}
-                        <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => handleUpdateRegistration(selectedReg.status, adminNotesText)}
-                            disabled={updatingStatus}
-                            id="save-notes-btn"
-                            className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50 shadow-sm shadow-emerald-100"
-                          >
-                            <Send className="h-3 w-3" />
-                            <span>Salvar Parecer da CIPA</span>
-                          </button>
-                        </div>
-                      </div>
+                              <button
+                                onClick={() => handleDeleteRegistration(selectedReg.id!)}
+                                id="delete-record-btn"
+                                className="bg-red-50 hover:bg-red-105 border border-red-200 text-red-655 p-2 rounded-xl transition-all cursor-pointer"
+                                title="Deletar este registro permanentemente"
+                              >
+                                <Trash2 className="h-4.5 w-4.5" />
+                              </button>
+                            </div>
+                          </div>
 
+                          {/* Info grid detail cards */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                <MapPin className="h-3 w-3 text-emerald-600" /> Setor Declarado
+                              </p>
+                              <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.area}</p>
+                            </div>
+                            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                <Tag className="h-3 w-3 text-emerald-600" /> Categoria
+                              </p>
+                              <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.category}</p>
+                            </div>
+                            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-emerald-600" /> Data Fato
+                              </p>
+                              <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.dateObservation}</p>
+                            </div>
+                          </div>
+
+                          {/* Original description */}
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-450 uppercase tracking-widest block flex items-center gap-1 select-none">
+                              <FileText className="h-3.5 w-3.5 text-emerald-600" /> Relato do Colaborador:
+                            </label>
+                            <div className="bg-slate-50 p-4 border border-slate-205 rounded-xl leading-relaxed text-sm text-slate-700 font-mono whitespace-pre-wrap max-h-[190px] overflow-y-auto">
+                              {selectedReg.info}
+                            </div>
+                          </div>
+
+                          {/* Contact metadata */}
+                          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+                            <p className="font-bold text-slate-550">Identificação e Contato:</p>
+                            {selectedReg.isIdentified ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-700 font-mono text-[11px] pt-1 border-t border-slate-200/50">
+                                <div><span className="text-slate-400 font-bold font-sans">NOME:</span> {selectedReg.name}</div>
+                                <div><span className="text-slate-400 font-bold font-sans">EMAIL:</span> {selectedReg.email || 'Não informado'}</div>
+                                <div><span className="text-slate-400 font-bold font-sans">TELEFONE:</span> {selectedReg.phone || 'Não informado'}</div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 font-medium italic">Este relato foi enviado de forma estritamente anônima e confidencial.</span>
+                            )}
+                          </div>
+
+                          {/* Admin update workspace form */}
+                          <div className="space-y-4 pt-4 border-t border-slate-100">
+                            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase block select-none">Mudar Status do Andamento</label>
+                                <p className="text-[10px] text-slate-400 leading-normal">O autor poderá consultar esta resposta em tempo real.</p>
+                              </div>
+                              
+                              {/* Status buttons */}
+                              <div id="status-selection-box" className="flex flex-wrap gap-1.5">
+                                {(['pendente', 'em_analise', 'resolvido', 'arquivado'] as const).map(st => (
+                                  <button
+                                    key={st}
+                                    onClick={() => handleUpdateRegistration(st, adminNotesText)}
+                                    disabled={updatingStatus}
+                                    className={`px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider font-extrabold rounded-xl border cursor-pointer transition-all ${
+                                      selectedReg.status === st
+                                        ? 'bg-emerald-600 text-white font-extrabold border-emerald-600 shadow-sm shadow-emerald-100'
+                                        : 'bg-slate-50 text-slate-500 hover:text-slate-800 border-slate-200'
+                                    }`}
+                                  >
+                                    {st === 'pendente' && '📋 Pendente'}
+                                    {st === 'em_analise' && '⚙️ Em Análise'}
+                                    {st === 'resolvido' && '✅ Resolvido'}
+                                    {st === 'arquivado' && '📦 Arquivado'}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Direct feedback notes textarea */}
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-slate-550 uppercase tracking-widest block select-none">Parecer Técnico / Notas de Investigação da CIPA:</label>
+                              <textarea
+                                rows={4}
+                                value={adminNotesText}
+                                onChange={(e) => setAdminNotesText(e.target.value)}
+                                placeholder="Descreva as soluções sugeridas, o andamento das reuniões, vistorias locais de SST ou a resolução..."
+                                className="w-full bg-slate-50 border border-slate-205 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/10"
+                              />
+                            </div>
+
+                            {/* Save notes button */}
+                            <div className="flex justify-end gap-3">
+                              <button
+                                onClick={() => handleUpdateRegistration(selectedReg.status, adminNotesText)}
+                                disabled={updatingStatus}
+                                id="save-notes-btn"
+                                className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50 shadow-sm shadow-emerald-100"
+                              >
+                                <Send className="h-3 w-3" />
+                                <span>Salvar Parecer da CIPA</span>
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center p-12 text-center text-slate-400 h-[320px]">
