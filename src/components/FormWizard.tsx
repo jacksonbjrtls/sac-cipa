@@ -291,7 +291,7 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
       {/* CIPA Header Banner */}
       <div className="mb-6 rounded-3xl bg-gradient-to-br from-emerald-700 to-emerald-800 p-6 sm:p-8 border border-emerald-600/15 shadow-sm">
         <h1 className="font-sans text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
-          Sistema de Atendimento ao Colaborador
+          Serviço de Atendimento ao Colaborador
         </h1>
         <p className="text-emerald-50 text-sm leading-relaxed max-w-2xl">
           Use este formulário para enviar dúvidas, sugestões, críticas ou apontamentos de riscos diretamente para a Mesa Diretora da CIPA. Seu relato será apreciado com total zelo.

@@ -25,8 +25,8 @@ export default function App() {
   const [routeProtocolId, setRouteProtocolId] = useState<string>('');
 
   // Dynamic visual identity (Logo)
-  const [customLogo, setCustomLogo] = useState<string | null>(null);
-  const [loadingLogo, setLoadingLogo] = useState<boolean>(true);
+  const [customLogo, setCustomLogo] = useState<string | null>('/logo/logo_cipa.png');
+  const [loadingLogo, setLoadingLogo] = useState<boolean>(false);
 
   // Firebase states
   const [user, setUser] = useState<User | null>(null);
@@ -95,11 +95,13 @@ export default function App() {
 
   // Monitor Auth state changes
   useEffect(() => {
-    if (isSimulated) return;
+    if (isSimulated) {
+      setCheckingAuth(false);
+      return;
+    }
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      setCheckingAuth(true);
       setAuthError(null);
 
       if (currentUser) {
@@ -134,67 +136,18 @@ export default function App() {
         }
       } else {
         setIsAdmin(false);
-        
-        // Smooth local or unauthenticated fallback logic.
-        // Try anonymous sign-in behind the scenes; if not enabled (e.g., auth/admin-restricted-operation),
-        // we fall back gracefully to a completely unauthenticated guest flow (fully allowed by firestore.rules).
-        try {
-          await signInAnonymously(auth);
-        } catch (anonErr: any) {
-          if (anonErr?.code === 'auth/admin-restricted-operation') {
-            console.log("A autenticação anônima do Firebase está desativada. Operando em modo convidado padrão.");
-          } else {
-            console.warn("Autenticação anônima preliminar indisponível:", anonErr?.message || anonErr);
-          }
-        }
       }
       setCheckingAuth(false);
     });
 
     return () => unsubscribe();
-  }, [currentView]);
+  }, [isSimulated]);
 
-  // Sync custom logo with Firestore or localStorage on mount
+  // Set simulation mode on mount
   useEffect(() => {
-    // Check if we are simulated first
     const simulated = localStorage.getItem('cipa_is_simulated') === 'true';
     setIsSimulated(simulated);
-
-    if (simulated) {
-      const savedLogo = localStorage.getItem('cipa_custom_logo');
-      setCustomLogo(savedLogo);
-      setLoadingLogo(false);
-    } else {
-      // Setup dynamic Firestore listener for custom logo settings
-      try {
-        const unsubscribe = onSnapshot(doc(db, 'settings', 'logo'), (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data && data.logoBase64) {
-              setCustomLogo(data.logoBase64);
-            } else {
-              setCustomLogo(null);
-            }
-          } else {
-            setCustomLogo(null);
-          }
-          setLoadingLogo(false);
-        }, (err) => {
-          console.warn("Erro ao ler configuração do logo no Firestore, usando local:", err);
-          const savedLogo = localStorage.getItem('cipa_custom_logo');
-          setCustomLogo(savedLogo);
-          setLoadingLogo(false);
-        });
-
-        return () => unsubscribe();
-      } catch (error) {
-        console.error("Erro ao registrar listener de logo:", error);
-        const savedLogo = localStorage.getItem('cipa_custom_logo');
-        setCustomLogo(savedLogo);
-        setLoadingLogo(false);
-      }
-    }
-  }, [isSimulated]);
+  }, []);
 
   // Handle dynamic favicon and document tab bar icon updating
   useEffect(() => {
@@ -254,7 +207,7 @@ export default function App() {
         setEmailCheckStatus('unauthorized');
         setLoginMsg({
           type: 'warning',
-          text: 'Seu e-mail não está credenciado como administrador no Sistema de Atendimento ao Colaborador.'
+          text: 'Seu e-mail não está credenciado como administrador no Serviço de Atendimento ao Colaborador.'
         });
       }
     } catch (err) {
@@ -379,7 +332,7 @@ export default function App() {
         if (!docSnap.exists()) {
           setLoginMsg({
             type: 'warning',
-            text: 'Seu e-mail não está credenciado como administrador no Sistema de Atendimento ao Colaborador.'
+            text: 'Seu e-mail não está credenciado como administrador no Serviço de Atendimento ao Colaborador.'
           });
           setIsAuthPending(false);
           return;
@@ -459,7 +412,7 @@ export default function App() {
         if (!docSnap.exists()) {
           setLoginMsg({
             type: 'warning',
-            text: 'Seu e-mail não está credenciado como administrador no Sistema de Atendimento ao Colaborador.'
+            text: 'Seu e-mail não está credenciado como administrador no Serviço de Atendimento ao Colaborador.'
           });
           setIsAuthPending(false);
           return;

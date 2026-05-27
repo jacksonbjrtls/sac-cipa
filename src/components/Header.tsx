@@ -26,7 +26,7 @@ export default function Header({
               SAC <span className="text-emerald-700">CIPA</span>
             </span>
             <span className="hidden sm:block font-sans text-xs sm:text-sm md:text-base font-extrabold tracking-tight text-slate-800 leading-snug">
-              Sistema de Atendimento ao Colaborador
+              Serviço de Atendimento ao Colaborador
             </span>
             <span className="hidden sm:inline-block mt-0.5 text-[9px] font-mono text-slate-400 self-start">
               Canal Oficial de Dúvidas & Relatos

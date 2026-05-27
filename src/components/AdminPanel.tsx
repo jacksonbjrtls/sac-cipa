@@ -1379,6 +1379,8 @@ export default function AdminPanel({
   // Sector density and safety indicators
   const sectorsMap: { [key: string]: number } = {};
   dashboardFilteredRegs.forEach(r => {
+    const isElogio = (r.category || '').toLowerCase().includes('elogio');
+    if (isElogio) return; // Não considera elogios para a densidade de alertas/riscos por setor
     const sec = r.area || 'Setor Não Informado';
     sectorsMap[sec] = (sectorsMap[sec] || 0) + 1;
   });
@@ -1731,7 +1733,7 @@ export default function AdminPanel({
                             <span className={`inline-block text-[9px] font-extrabold font-mono uppercase px-1.5 py-0.2 rounded-full ${
                               isHighRisk ? 'bg-red-50 text-red-600 border border-red-100 animate-pulse' : 'bg-slate-50 text-slate-400'
                             }`}>
-                              {isHighRisk ? '🛠️ RISCO ALREGADO' : 'RISCO CONTROLADO'}
+                              {isHighRisk ? '⚠️ RISCO EM ATENÇÃO' : 'RISCO CONTROLADO'}
                             </span>
                           </div>
                           
@@ -2721,7 +2723,7 @@ export default function AdminPanel({
               </div>
 
               <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                Insira o e-mail institucional corporativo da pessoa (@eldoradobrasil.com.br) para delegar privilégios integrais de administração do aplicativo Sistema de Atendimento ao Colaborador.
+                Insira o e-mail institucional corporativo da pessoa (@eldoradobrasil.com.br) para delegar privilégios integrais de administração do aplicativo Serviço de Atendimento ao Colaborador.
               </p>
 
               <form onSubmit={handleAddAdmin} className="space-y-4">
@@ -2819,69 +2821,39 @@ export default function AdminPanel({
                   <span>Branding & Identidade Visual</span>
                 </h3>
                 <p className="text-slate-500 text-xs sm:text-sm mt-1">
-                  Gerencie a identidade visual do Sistema de Atendimento ao Colaborador. Faça upload do logotipo oficial da sua empresa ou comissão para customizar a interface para desktop, celulares e a barra do navegador.
+                  O logotipo oficial do Serviço de Atendimento ao Colaborador está configurado de forma estática para carregamento imediato.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 {/* Preview and Description card */}
                 <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/60 flex flex-col items-center justify-center space-y-4">
-                  <span className="text-xs font-bold text-slate-500 self-start uppercase tracking-wider">Visualização em Tempo Real</span>
+                  <span className="text-xs font-bold text-slate-500 self-start uppercase tracking-wider">Visualização do Logotipo</span>
                   
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md flex flex-col items-center justify-center min-w-[200px] min-h-[200px]">
                     <CipaLogo customLogo={customLogo} size={110} showText={true} />
                   </div>
 
                   <p className="text-[11px] text-slate-400 leading-relaxed text-center max-w-[280px]">
-                    {customLogo 
-                      ? "O logotipo personalizado está ativo. Ele foi processado e otimizado para o navegador."
-                      : "Carregado o logotipo padrão CIPA com estética verde de segurança padrão regulamentada pela NR-5."
-                    }
+                    Carregado diretamente a partir de seu arquivo otimizado local.
                   </p>
                 </div>
 
-                {/* Upload and settings form */}
+                {/* Info about local logo_cipa.png */}
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
-                      Carregar Logotipo Oficial
-                    </label>
-                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-white hover:border-emerald-500/50 transition-all group relative cursor-pointer">
-                      <input
-                        type="file"
-                        id="logo-file-input"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      />
-                      <UploadCloud className="h-10 w-10 text-slate-400 group-hover:text-emerald-600 transition-colors mb-2" />
-                      <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
-                        Arraste ou clique para enviar
-                      </span>
-                      <span className="text-[10px] text-slate-405 mt-1">
-                        PNG, JPEG, SVG ou GIF (com compressão automática)
-                      </span>
-                    </div>
-                  </div>
-
-                  {customLogo && (
-                    <button
-                      type="button"
-                      onClick={handleResetLogo}
-                      className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      <span>Redefinir para Logo Padrão</span>
-                    </button>
-                  )}
-
-                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900 text-[11px] sm:text-xs leading-relaxed space-y-1">
-                    <strong className="font-extrabold flex items-center gap-1">
-                      <Check className="h-4 w-4 shrink-0 text-emerald-700" />
-                      Sincronização em tempo real:
+                  <div className="p-5 rounded-2xl bg-emerald-50/50 border border-emerald-100 text-slate-700 text-xs sm:text-sm leading-relaxed space-y-3">
+                    <strong className="font-extrabold text-emerald-800 text-sm flex items-center gap-1.5">
+                      <Check className="h-4.5 w-4.5 text-emerald-700" />
+                      Logotipo Local Otimizado (Sem Delays)
                     </strong>
                     <p>
-                      Surgirá no desktop, celulares, e no ícone da aba do navegador (Favicon) instantaneamente para todos os usuários do canal!
+                      Para obter a máxima velocidade de resposta e carregamento imediato em qualquer tipo de conexão, o logotipo do aplicativo é lido diretamente do arquivo de imagem estático:
+                    </p>
+                    <div className="bg-slate-100/85 p-3 rounded-xl border border-slate-200 font-mono text-xs text-slate-600 select-all">
+                      public/logo/logo_cipa.png
+                    </div>
+                    <p>
+                      Com isso, o processamento de imagens Base64 e as consultas síncronas ao banco de dados foram totalmente dispensados, eliminando por completo qualquer delay na inicialização do canal para desktop e smartphones.
                     </p>
                   </div>
                 </div>
