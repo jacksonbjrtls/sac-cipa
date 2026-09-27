@@ -889,6 +889,61 @@ export default function AdminPanel({
     }
   };
 
+  // Cleans emojis and corrupt Unicode/mojibake sequences (like Ø=Ü¡) for jsPDF compatibility
+  const cleanPdfText = (raw: string | null | undefined): string => {
+    if (!raw) return '';
+    let str = String(raw);
+
+    // 1. Remove specific mojibake sequences produced by corrupted emojis (e.g. Ø=Ü¡, etc.)
+    str = str.replace(/Ø=Ü¡/g, '');
+    str = str.replace(/[Ø=Ü¡ð’]/g, '');
+
+    // 2. Remove all Unicode emoji sequences, symbols, pictographs, surrogates
+    str = str.replace(
+      /([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]|[\uFE00-\uFE0F]|\uD83D[\uDE00-\uDE4F]|\uD83C[\uDF00-\uDFFF]|\uD83D[\uD000-\uDFFF]|\uD83D[\uDE80-\uDEFF]|[\u{1F000}-\u{1FFFF}])/gu,
+      ''
+    );
+
+    // 3. Remove stray leading symbols or dashes left over after emoji removal
+    str = str.replace(/^[\s\-_:;•>~#*+=/|\\?!@$%^&()]+/, '');
+
+    // 4. Normalize multiple whitespaces
+    return str.replace(/\s+/g, ' ').trim();
+  };
+
+  // Formats and normalizes category for CIPA printable reports without emojis or corruption
+  const formatCategoryForPdf = (rawCat: string | null | undefined): string => {
+    if (!rawCat) return 'Geral';
+    const cleaned = cleanPdfText(rawCat);
+    if (!cleaned) return 'Geral';
+
+    const lower = cleaned.toLowerCase();
+    if (lower.startsWith('sugestao') || lower.startsWith('sugestão')) {
+      // If user typed custom details inside parentheses, keep them cleanly e.g. "Sugestão (Melhorias no ambiente...)"
+      if (cleaned.includes('(')) {
+        return cleaned;
+      }
+      return 'Sugestão de Melhoria';
+    }
+    if (lower.includes('condicao insegura') || lower.includes('condição insegura')) {
+      return 'Condição Insegura / Risco';
+    }
+    if (lower.includes('critica') || lower.includes('crítica') || lower.includes('reclamacao') || lower.includes('reclamação')) {
+      return 'Crítica ou Reclamação';
+    }
+    if (lower.includes('duvida') || lower.includes('dúvida')) {
+      return 'Dúvida de Segurança';
+    }
+    if (lower.includes('elogio')) {
+      return 'Elogio / Reconhecimento';
+    }
+    if (lower.includes('ambiente') || lower.includes('ambiental')) {
+      return 'Meio Ambiente & Sustentabilidade';
+    }
+
+    return cleaned;
+  };
+
   // Export single ticket report as formatted printable PDF using jsPDF
   const handleExportSingleReportPdf = async (reg: Registration) => {
     if (!reg) return;
@@ -917,44 +972,120 @@ export default function AdminPanel({
         return false;
       };
 
-      // Header Banner
+      // Header Banner (Height: 28mm, organized in clean non-overlapping tiers)
+      const bannerHeight = 28;
       doc.setFillColor(6, 95, 70); // Emerald 800 (#065f46)
-      doc.roundedRect(margin, currentY, contentWidth, 24, 2, 2, 'F');
+      doc.roundedRect(margin, currentY, contentWidth, bannerHeight, 2, 2, 'F');
 
-      // Title & Branding
+      // Tier 1: Main Title - Full width available across top, preventing any text collision
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.text('SAC CIPA · SERVIÇO DE ATENDIMENTO AO COLABORADOR', margin + 6, currentY + 8.5);
+      doc.setFontSize(11.5);
+      doc.text('SAC CIPA · SERVIÇO DE ATENDIMENTO AO COLABORADOR', margin + 6, currentY + 8);
 
+      // Tier 2: Subtitle
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(209, 250, 229);
-      doc.text('Relatório Oficial de Atendimento & Ocorrência de Segurança (NR-5)', margin + 6, currentY + 15);
+      doc.text('Relatório Oficial de Atendimento & Ocorrência de Segurança (NR-5)', margin + 6, currentY + 14);
 
-      const protocolCode = `#CIPA-${reg.id || 'N/A'}`;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text(protocolCode, pageWidth - margin - 6, currentY + 9, { align: 'right' });
+      // Subtle dividing line inside banner
+      doc.setDrawColor(15, 118, 90); // Emerald 700
+      doc.setLineWidth(0.3);
+      doc.line(margin + 6, currentY + 17.5, pageWidth - margin - 6, currentY + 17.5);
 
+      // Tier 3: Left = Emission metadata
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(209, 250, 229);
-      doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, pageWidth - margin - 6, currentY + 16, { align: 'right' });
+      doc.text(`Emissão Oficial: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, margin + 6, currentY + 23.5);
 
-      currentY += 28;
+      // Tier 3: Right = Dedicated Protocol Badge (Isolated, clearly visible and cannot collide with title)
+      const cleanId = cleanPdfText(reg.id || 'N/A');
+      const protocolLabel = 'PROTOCOLO:';
+      const protocolCode = `#CIPA-${cleanId}`;
+      const fullProtoStr = `${protocolLabel} ${protocolCode}`;
 
-      // Metadata Table Card: Status, Urgência, Data Fato, Setor, Categoria
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      const protoWidth = doc.getTextWidth(fullProtoStr) + 8;
+      const protoBadgeX = pageWidth - margin - 6 - protoWidth;
+      const protoBadgeY = currentY + 19;
+
+      // Darker emerald container badge
+      doc.setFillColor(4, 78, 56);
+      doc.roundedRect(protoBadgeX, protoBadgeY, protoWidth, 6.5, 1, 1, 'F');
+
+      // High contrast text inside badge
+      doc.setTextColor(167, 243, 208); // Emerald 200 for label
+      doc.text(protocolLabel, protoBadgeX + 4, protoBadgeY + 4.5);
+      const labelW = doc.getTextWidth(protocolLabel + ' ');
+      doc.setTextColor(255, 255, 255); // White for code
+      doc.text(protocolCode, protoBadgeX + 4 + labelW, protoBadgeY + 4.5);
+
+      currentY += bannerHeight + 5;
+
+      // Clean and format classification strings
+      const cleanArea = cleanPdfText(reg.area || 'Setor Não Informado');
+      const cleanCat = formatCategoryForPdf(reg.category);
+      const cleanFato = cleanPdfText(reg.dateObservation) || 'Não informada';
+      const cleanCreated = reg.createdAt?.seconds 
+        ? new Date(reg.createdAt.seconds * 1000).toLocaleString('pt-BR') 
+        : 'Recente';
+
+      // Dynamic calculation for Classification Band (Setor & Categoria)
+      // Generous 87mm width each so text wraps comfortably without overflowing page or overlapping
+      const halfColW = (contentWidth - 6) / 2; // 88mm
+      const areaTextLines = doc.splitTextToSize(cleanArea, halfColW - 6);
+      const catTextLines = doc.splitTextToSize(cleanCat, halfColW - 6);
+      const topMaxLines = Math.max(areaTextLines.length, catTextLines.length, 1);
+      const topBandHeight = 11 + (topMaxLines * 4.2);
+      const bottomBandHeight = 15;
+      const cardHeight = topBandHeight + bottomBandHeight;
+
+      // Outer card rounded rectangle
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin, currentY, contentWidth, 30, 1.5, 1.5, 'FD');
+      doc.roundedRect(margin, currentY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
 
-      // Column 1: Status & Urgência
+      // --- TOP BAND: Setor & Categoria ---
+      // Left: Setor
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text('STATUS DO RELATO', margin + 4, currentY + 6);
+      doc.text('SETOR / ÁREA OPERACIONAL', margin + 5, currentY + 5.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(areaTextLines, margin + 5, currentY + 10);
+
+      // Right: Categoria
+      const catColX = margin + halfColW + 4;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('CATEGORIA DO REGISTRO', catColX, currentY + 5.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(catTextLines, catColX, currentY + 10);
+
+      // Divider line between top band and bottom band
+      const divY = currentY + topBandHeight;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin + 4, divY, margin + contentWidth - 4, divY);
+
+      // --- BOTTOM BAND: 4 structured columns (Status, Urgência, Data do Fato, Data de Cadastro) ---
+      const col4W = (contentWidth - 8) / 4; // ~43.5mm
+      const botY = divY + 4;
+
+      // 1. Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text('STATUS DO RELATO', margin + 5, botY);
 
       const statusMap: { [k: string]: string } = {
         pendente: 'PENDENTE',
@@ -965,78 +1096,59 @@ export default function AdminPanel({
       const statusLabel = statusMap[reg.status] || (reg.status || 'PENDENTE').toUpperCase();
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       if (reg.status === 'resolvido') doc.setTextColor(4, 120, 87);
       else if (reg.status === 'em_analise') doc.setTextColor(3, 105, 161);
       else if (reg.status === 'pendente') doc.setTextColor(180, 83, 9);
       else doc.setTextColor(71, 85, 105);
-      doc.text(statusLabel, margin + 4, currentY + 11);
+      doc.text(statusLabel, margin + 5, botY + 5.2);
 
+      // 2. Urgência
+      const urgX = margin + 5 + col4W;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
-      doc.text('GRAU DE URGÊNCIA', margin + 4, currentY + 18);
+      doc.text('GRAU DE URGÊNCIA', urgX, botY);
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       const urgency = reg.urgency || 'baixa';
       if (urgency === 'alta' || urgency === 'urgente') {
         doc.setTextColor(185, 28, 28);
-        doc.text('CRÍTICA / ALTA', margin + 4, currentY + 23);
+        doc.text('CRÍTICA / ALTA', urgX, botY + 5.2);
       } else if (urgency === 'media') {
         doc.setTextColor(180, 83, 9);
-        doc.text('ATENÇÃO / MÉDIA', margin + 4, currentY + 23);
+        doc.text('ATENÇÃO / MÉDIA', urgX, botY + 5.2);
       } else {
         doc.setTextColor(4, 120, 87);
-        doc.text('ROTINA / BAIXA', margin + 4, currentY + 23);
+        doc.text('ROTINA / BAIXA', urgX, botY + 5.2);
       }
 
-      // Column 2: Data da Observação & Data de Cadastro
-      const col2X = margin + 50;
+      // 3. Data do Fato
+      const fatoX = margin + 5 + (col4W * 2);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
-      doc.text('DATA DO FATO / OBSERVAÇÃO', col2X, currentY + 6);
+      doc.text('DATA DO FATO', fatoX, botY);
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(30, 41, 59);
-      doc.text(reg.dateObservation || 'Não informada', col2X, currentY + 11);
+      doc.text(cleanFato, fatoX, botY + 5.2);
 
+      // 4. Data de Cadastro
+      const cadX = margin + 5 + (col4W * 3);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
-      doc.text('DATA DE CADASTRO', col2X, currentY + 18);
+      doc.text('DATA DE CADASTRO', cadX, botY);
+
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(51, 65, 85);
-      const createdAtStr = reg.createdAt?.seconds 
-        ? new Date(reg.createdAt.seconds * 1000).toLocaleString('pt-BR') 
-        : 'Recente';
-      doc.text(createdAtStr, col2X, currentY + 23);
+      doc.text(cleanCreated, cadX, botY + 5.2);
 
-      // Column 3: Setor & Categoria
-      const col3X = margin + 112;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text('SETOR / ÁREA OPERACIONAL', col3X, currentY + 6);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      const areaText = doc.splitTextToSize(reg.area || 'Setor Não Informado', contentWidth - 114);
-      doc.text(areaText, col3X, currentY + 11);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text('CATEGORIA DO REGISTRO', col3X, currentY + 18);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(51, 65, 85);
-      const catText = doc.splitTextToSize(reg.category || 'Geral', contentWidth - 114);
-      doc.text(catText, col3X, currentY + 23);
-
-      currentY += 34;
+      currentY += cardHeight + 5;
 
       // Colaborador / Identificação Section
       doc.setFillColor(241, 245, 249);
@@ -1049,7 +1161,10 @@ export default function AdminPanel({
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       if (reg.isIdentified) {
-        const identStr = `Nome: ${reg.name || 'Não informado'}   |   E-mail: ${reg.email || 'Não informado'}   |   Telefone: ${reg.phone || 'Não informado'}`;
+        const cleanName = cleanPdfText(reg.name) || 'Não informado';
+        const cleanEmail = cleanPdfText(reg.email) || 'Não informado';
+        const cleanPhone = cleanPdfText(reg.phone) || 'Não informado';
+        const identStr = `Nome: ${cleanName}   |   E-mail: ${cleanEmail}   |   Telefone: ${cleanPhone}`;
         doc.setTextColor(15, 23, 42);
         doc.text(identStr, margin + 4, currentY + 10.5);
       } else {
@@ -1072,7 +1187,7 @@ export default function AdminPanel({
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(30, 41, 59);
-      const splitInfo = doc.splitTextToSize(reg.info || 'Sem descrição fornecida.', contentWidth - 8);
+      const splitInfo = doc.splitTextToSize(cleanPdfText(reg.info) || 'Sem descrição fornecida.', contentWidth - 8);
       const infoBoxHeight = Math.max(22, (splitInfo.length * 4.5) + 8);
 
       checkPageBreak(infoBoxHeight + 6);
@@ -1090,13 +1205,14 @@ export default function AdminPanel({
       doc.text('2. DESPACHO DA MESA DIRETORA CIPA / PLANO DE AÇÃO', margin, currentY);
       currentY += 3.5;
 
-      const notesText = reg.adminNotes && reg.adminNotes.trim().length > 0
-        ? reg.adminNotes.trim()
+      const rawNotes = cleanPdfText(reg.adminNotes);
+      const notesText = rawNotes && rawNotes.trim().length > 0
+        ? rawNotes.trim()
         : 'Nenhuma deliberação ou parecer técnico interno registrado até o momento.';
       
-      doc.setFont('helvetica', reg.adminNotes ? 'normal' : 'italic');
+      doc.setFont('helvetica', rawNotes ? 'normal' : 'italic');
       doc.setFontSize(8.5);
-      doc.setTextColor(reg.adminNotes ? 30 : 100, reg.adminNotes ? 41 : 116, reg.adminNotes ? 59 : 139);
+      doc.setTextColor(rawNotes ? 30 : 100, rawNotes ? 41 : 116, rawNotes ? 59 : 139);
       const splitNotes = doc.splitTextToSize(notesText, contentWidth - 8);
       const notesBoxHeight = Math.max(18, (splitNotes.length * 4.2) + 10);
 
@@ -1112,7 +1228,8 @@ export default function AdminPanel({
         doc.setFontSize(7.5);
         doc.setTextColor(71, 85, 105);
         const respDate = reg.respondedAt?.seconds ? new Date(reg.respondedAt.seconds * 1000).toLocaleString('pt-BR') : '';
-        doc.text(`Atualizado por: ${reg.respondedBy} ${respDate ? `em ${respDate}` : ''}`, margin + 4, currentY + notesBoxHeight - 2.5);
+        const cleanRespBy = cleanPdfText(reg.respondedBy);
+        doc.text(`Atualizado por: ${cleanRespBy} ${respDate ? `em ${respDate}` : ''}`, margin + 4, currentY + notesBoxHeight - 2.5);
       }
 
       currentY += notesBoxHeight + 6;
@@ -1236,13 +1353,13 @@ export default function AdminPanel({
 
       // Column widths definition (sum = 273mm)
       const colWidths = {
-        proto: 25,
-        data: 18,
-        setor: 32,
-        cat: 32,
-        urg: 20,
-        status: 22,
-        desc: 64,
+        proto: 23,
+        data: 17,
+        setor: 35,
+        cat: 35,
+        urg: 18,
+        status: 20,
+        desc: 65,
         parecer: 60
       };
 
@@ -1347,10 +1464,15 @@ export default function AdminPanel({
 
       // Draw each record row
       records.forEach((reg, index) => {
-        const splitDesc = doc.splitTextToSize(reg.info || 'Sem descrição', colWidths.desc - 4);
-        const splitNotes = doc.splitTextToSize(reg.adminNotes && reg.adminNotes.trim() ? reg.adminNotes.trim() : 'Pendente de parecer', colWidths.parecer - 4);
-        const splitArea = doc.splitTextToSize(reg.area || 'Não informado', colWidths.setor - 4);
-        const splitCat = doc.splitTextToSize(reg.category || 'Geral', colWidths.cat - 4);
+        const cleanDesc = cleanPdfText(reg.info) || 'Sem descrição';
+        const cleanNotes = cleanPdfText(reg.adminNotes && reg.adminNotes.trim() ? reg.adminNotes.trim() : 'Pendente de parecer');
+        const cleanArea = cleanPdfText(reg.area) || 'Não informado';
+        const cleanCat = formatCategoryForPdf(reg.category);
+
+        const splitDesc = doc.splitTextToSize(cleanDesc, colWidths.desc - 4);
+        const splitNotes = doc.splitTextToSize(cleanNotes, colWidths.parecer - 4);
+        const splitArea = doc.splitTextToSize(cleanArea, colWidths.setor - 4);
+        const splitCat = doc.splitTextToSize(cleanCat, colWidths.cat - 4);
 
         const maxLines = Math.max(splitDesc.length, splitNotes.length, splitArea.length, splitCat.length, 1);
         const rowHeight = Math.max(7.5, (maxLines * 3.4) + 3);
@@ -1379,7 +1501,7 @@ export default function AdminPanel({
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
         doc.setTextColor(30, 41, 59);
-        const protoText = `#${(reg.id || '').substring(0, 10)}`;
+        const protoText = `#${cleanPdfText(reg.id || '').substring(0, 10)}`;
         doc.text(protoText, curX + 2, currentY + 4);
         curX += colWidths.proto;
 
@@ -1387,7 +1509,7 @@ export default function AdminPanel({
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(71, 85, 105);
-        doc.text(reg.dateObservation || '', curX + 2, currentY + 4);
+        doc.text(cleanPdfText(reg.dateObservation) || '', curX + 2, currentY + 4);
         curX += colWidths.data;
 
         // Setor

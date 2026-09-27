@@ -2,6 +2,7 @@ import React from 'react';
 import { ShieldCheck, LayoutDashboard, Search, FileText, LogOut } from 'lucide-react';
 import { User } from 'firebase/auth';
 import CipaLogo from './CipaLogo';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   currentView: 'form' | 'tracker' | 'admin';
@@ -78,6 +79,8 @@ export default function Header({
               <span className="hidden md:inline">Painel Geral</span>
             </button>
           )}
+
+          <PWAInstallButton />
 
           <div className="h-6 w-px bg-slate-200 mx-0.5 sm:mx-1 md:mx-2 shrink-0" />
 

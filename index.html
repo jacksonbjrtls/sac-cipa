@@ -3,12 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- PWA & Mobile Web App Meta -->
+    <meta name="application-name" content="SAC CIPA" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#047857" />
-    <link rel="manifest" href="/public/manifest.json" />
-    <link rel="apple-touch-icon" href="/logo/logo_cipa.png" />
-    <link rel="icon" type="image/png" href="/logo/logo_cipa.png" />
+    <meta name="msapplication-TileColor" content="#047857" />
+    <meta name="msapplication-TileImage" content="/pwa-192x192.png" />
+    
+    <!-- iOS Safari Configuration & Icons -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="SAC CIPA" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png" />
+
+    <!-- Standard Favicons & Desktop Shortcuts -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
     <title>SAC CIPA - Serviço de Atendimento ao Colaborador</title>
   </head>
   <body class="bg-[#f1f5f9] text-slate-800 antialiased selection:bg-blue-600 selection:text-white">
@@ -16,4 +34,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
