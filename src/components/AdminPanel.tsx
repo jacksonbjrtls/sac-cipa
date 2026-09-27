@@ -5,8 +5,10 @@ import {
   Trash2, Send, Check, AlertCircle, RefreshCw, 
   MessageSquare, UserPlus, Filter, FileText, Calendar, Tag, MapPin, 
   Download, BarChart2, CheckCircle2, Clock, Plus, Edit3, Activity,
-  Palette, UploadCloud, RotateCcw, ExternalLink
+  Palette, UploadCloud, RotateCcw, ExternalLink, Camera, ZoomIn, X, Flame,
+  Printer
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { 
   collection, doc, onSnapshot, setDoc, 
   updateDoc, deleteDoc, serverTimestamp, query, orderBy, addDoc
@@ -146,6 +148,9 @@ export default function AdminPanel({
     email: string;
     phone: string;
   } | null>(null);
+  const [adminPhotoZoom, setAdminPhotoZoom] = useState<string | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+  const [isExportingAllPdf, setIsExportingAllPdf] = useState<boolean>(false);
 
   // CSV Import related states
   const [showImportCsvSection, setShowImportCsvSection] = useState<boolean>(false);
@@ -881,6 +886,636 @@ export default function AdminPanel({
       }
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  // Export single ticket report as formatted printable PDF using jsPDF
+  const handleExportSingleReportPdf = async (reg: Registration) => {
+    if (!reg) return;
+    setIsExportingPdf(true);
+    setErrorMsg(null);
+
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 14;
+      const contentWidth = pageWidth - (margin * 2); // 182mm
+      let currentY = 14;
+
+      const checkPageBreak = (neededHeight: number) => {
+        if (currentY + neededHeight > pageHeight - 22) {
+          doc.addPage();
+          currentY = 16;
+          return true;
+        }
+        return false;
+      };
+
+      // Header Banner
+      doc.setFillColor(6, 95, 70); // Emerald 800 (#065f46)
+      doc.roundedRect(margin, currentY, contentWidth, 24, 2, 2, 'F');
+
+      // Title & Branding
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('SAC CIPA · SERVIÇO DE ATENDIMENTO AO COLABORADOR', margin + 6, currentY + 8.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(209, 250, 229);
+      doc.text('Relatório Oficial de Atendimento & Ocorrência de Segurança (NR-5)', margin + 6, currentY + 15);
+
+      const protocolCode = `#CIPA-${reg.id || 'N/A'}`;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(protocolCode, pageWidth - margin - 6, currentY + 9, { align: 'right' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(209, 250, 229);
+      doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, pageWidth - margin - 6, currentY + 16, { align: 'right' });
+
+      currentY += 28;
+
+      // Metadata Table Card: Status, Urgência, Data Fato, Setor, Categoria
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin, currentY, contentWidth, 30, 1.5, 1.5, 'FD');
+
+      // Column 1: Status & Urgência
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('STATUS DO RELATO', margin + 4, currentY + 6);
+
+      const statusMap: { [k: string]: string } = {
+        pendente: 'PENDENTE',
+        em_analise: 'EM ANÁLISE',
+        resolvido: 'RESOLVIDO',
+        arquivado: 'ARQUIVADO'
+      };
+      const statusLabel = statusMap[reg.status] || (reg.status || 'PENDENTE').toUpperCase();
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      if (reg.status === 'resolvido') doc.setTextColor(4, 120, 87);
+      else if (reg.status === 'em_analise') doc.setTextColor(3, 105, 161);
+      else if (reg.status === 'pendente') doc.setTextColor(180, 83, 9);
+      else doc.setTextColor(71, 85, 105);
+      doc.text(statusLabel, margin + 4, currentY + 11);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('GRAU DE URGÊNCIA', margin + 4, currentY + 18);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      const urgency = reg.urgency || 'baixa';
+      if (urgency === 'alta' || urgency === 'urgente') {
+        doc.setTextColor(185, 28, 28);
+        doc.text('CRÍTICA / ALTA', margin + 4, currentY + 23);
+      } else if (urgency === 'media') {
+        doc.setTextColor(180, 83, 9);
+        doc.text('ATENÇÃO / MÉDIA', margin + 4, currentY + 23);
+      } else {
+        doc.setTextColor(4, 120, 87);
+        doc.text('ROTINA / BAIXA', margin + 4, currentY + 23);
+      }
+
+      // Column 2: Data da Observação & Data de Cadastro
+      const col2X = margin + 50;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('DATA DO FATO / OBSERVAÇÃO', col2X, currentY + 6);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(reg.dateObservation || 'Não informada', col2X, currentY + 11);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('DATA DE CADASTRO', col2X, currentY + 18);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      const createdAtStr = reg.createdAt?.seconds 
+        ? new Date(reg.createdAt.seconds * 1000).toLocaleString('pt-BR') 
+        : 'Recente';
+      doc.text(createdAtStr, col2X, currentY + 23);
+
+      // Column 3: Setor & Categoria
+      const col3X = margin + 112;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('SETOR / ÁREA OPERACIONAL', col3X, currentY + 6);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      const areaText = doc.splitTextToSize(reg.area || 'Setor Não Informado', contentWidth - 114);
+      doc.text(areaText, col3X, currentY + 11);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('CATEGORIA DO REGISTRO', col3X, currentY + 18);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      const catText = doc.splitTextToSize(reg.category || 'Geral', contentWidth - 114);
+      doc.text(catText, col3X, currentY + 23);
+
+      currentY += 34;
+
+      // Colaborador / Identificação Section
+      doc.setFillColor(241, 245, 249);
+      doc.roundedRect(margin, currentY, contentWidth, 14, 1.5, 1.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(51, 65, 85);
+      doc.text('IDENTIFICAÇÃO DO COLABORADOR:', margin + 4, currentY + 5.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      if (reg.isIdentified) {
+        const identStr = `Nome: ${reg.name || 'Não informado'}   |   E-mail: ${reg.email || 'Não informado'}   |   Telefone: ${reg.phone || 'Não informado'}`;
+        doc.setTextColor(15, 23, 42);
+        doc.text(identStr, margin + 4, currentY + 10.5);
+      } else {
+        doc.setTextColor(100, 116, 139);
+        doc.text('Relato submetido sob sigilo anônimo em conformidade com as diretrizes do Comitê de Ética e NR-5.', margin + 4, currentY + 10.5);
+      }
+
+      currentY += 18;
+
+      // Section 1: Descrição do Relato
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text('1. CONTEÚDO E DESCRIÇÃO DO RELATO', margin, currentY);
+      currentY += 3.5;
+
+      doc.setDrawColor(203, 213, 225);
+      doc.setFillColor(255, 255, 255);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      const splitInfo = doc.splitTextToSize(reg.info || 'Sem descrição fornecida.', contentWidth - 8);
+      const infoBoxHeight = Math.max(22, (splitInfo.length * 4.5) + 8);
+
+      checkPageBreak(infoBoxHeight + 6);
+
+      doc.roundedRect(margin, currentY, contentWidth, infoBoxHeight, 1.5, 1.5, 'S');
+      doc.text(splitInfo, margin + 4, currentY + 6);
+
+      currentY += infoBoxHeight + 6;
+
+      // Section 2: Parecer da CIPA / Acompanhamento Administrativo
+      checkPageBreak(30);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text('2. DESPACHO DA MESA DIRETORA CIPA / PLANO DE AÇÃO', margin, currentY);
+      currentY += 3.5;
+
+      const notesText = reg.adminNotes && reg.adminNotes.trim().length > 0
+        ? reg.adminNotes.trim()
+        : 'Nenhuma deliberação ou parecer técnico interno registrado até o momento.';
+      
+      doc.setFont('helvetica', reg.adminNotes ? 'normal' : 'italic');
+      doc.setFontSize(8.5);
+      doc.setTextColor(reg.adminNotes ? 30 : 100, reg.adminNotes ? 41 : 116, reg.adminNotes ? 59 : 139);
+      const splitNotes = doc.splitTextToSize(notesText, contentWidth - 8);
+      const notesBoxHeight = Math.max(18, (splitNotes.length * 4.2) + 10);
+
+      checkPageBreak(notesBoxHeight + 6);
+
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(203, 213, 225);
+      doc.roundedRect(margin, currentY, contentWidth, notesBoxHeight, 1.5, 1.5, 'FD');
+      doc.text(splitNotes, margin + 4, currentY + 5.5);
+
+      if (reg.respondedBy) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(71, 85, 105);
+        const respDate = reg.respondedAt?.seconds ? new Date(reg.respondedAt.seconds * 1000).toLocaleString('pt-BR') : '';
+        doc.text(`Atualizado por: ${reg.respondedBy} ${respDate ? `em ${respDate}` : ''}`, margin + 4, currentY + notesBoxHeight - 2.5);
+      }
+
+      currentY += notesBoxHeight + 6;
+
+      // Section 3: Evidência Fotográfica (se houver)
+      if (reg.photoData) {
+        checkPageBreak(85);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text('3. EVIDÊNCIA FOTOGRÁFICA ANEXADA', margin, currentY);
+        currentY += 3.5;
+
+        try {
+          const imgMaxW = 110;
+          const imgMaxH = 65;
+          
+          doc.setDrawColor(203, 213, 225);
+          doc.setFillColor(248, 250, 252);
+          doc.roundedRect(margin, currentY, contentWidth, imgMaxH + 10, 1.5, 1.5, 'FD');
+
+          doc.addImage(reg.photoData, 'JPEG', margin + (contentWidth - imgMaxW) / 2, currentY + 3, imgMaxW, imgMaxH);
+          
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(100, 116, 139);
+          doc.text('Fotografia registrada e anexada diretamente pelo colaborador no envio do relato.', margin + 4, currentY + imgMaxH + 7.5);
+
+          currentY += imgMaxH + 15;
+        } catch (imgErr) {
+          console.warn('Erro ao inserir foto no PDF:', imgErr);
+          doc.text('[Evidência fotográfica anexada no sistema, não convertida para impressão]', margin + 4, currentY + 6);
+          currentY += 12;
+        }
+      }
+
+      // Section 4: Termo de Ciência & Assinaturas para Impressão
+      checkPageBreak(38);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text('TERMO DE CIÊNCIA & VALIDAÇÃO:', margin, currentY);
+      currentY += 6;
+
+      const sigColWidth = (contentWidth - 10) / 3;
+      const sigY = currentY + 16;
+
+      // Sign 1: CIPA
+      doc.setDrawColor(148, 163, 184);
+      doc.line(margin, sigY, margin + sigColWidth, sigY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text('Representante CIPA', margin + (sigColWidth / 2), sigY + 4, { align: 'center' });
+      doc.text('Data: ____/____/________', margin + (sigColWidth / 2), sigY + 8, { align: 'center' });
+
+      // Sign 2: Gestor
+      const sig2X = margin + sigColWidth + 5;
+      doc.line(sig2X, sigY, sig2X + sigColWidth, sigY);
+      doc.text('Gestor / Supervisor da Área', sig2X + (sigColWidth / 2), sigY + 4, { align: 'center' });
+      doc.text('Data: ____/____/________', sig2X + (sigColWidth / 2), sigY + 8, { align: 'center' });
+
+      // Sign 3: SST
+      const sig3X = sig2X + sigColWidth + 5;
+      doc.line(sig3X, sigY, sig3X + sigColWidth, sigY);
+      doc.text('Técnico de Seg. Trabalho (SST)', sig3X + (sigColWidth / 2), sigY + 4, { align: 'center' });
+      doc.text('Data: ____/____/________', sig3X + (sigColWidth / 2), sigY + 8, { align: 'center' });
+
+      // Footer on all pages
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text('SAC CIPA · Documento oficial emitido para fins de registro e averiguação interna segundo a NR-5.', margin, pageHeight - 8);
+        doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+      }
+
+      // Save and download PDF
+      const filename = `Relatorio_CIPA_${reg.id || Date.now()}.pdf`;
+      doc.save(filename);
+
+      await logSystemAction('Exportar Relatório PDF', `Gerou arquivo PDF para impressão referente ao relato #${reg.id || ''}`);
+
+      setSuccessMsg(`Relatório ${protocolCode} exportado em PDF com sucesso para impressão!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao gerar relatório PDF:', err);
+      setErrorMsg(`Falha na geração do PDF: ${err.message || err}`);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  // Export general list of tickets as a professional formatted PDF document using jsPDF
+  const handleExportAllReportsPdf = async (records: Registration[]) => {
+    if (!records || records.length === 0) {
+      setErrorMsg("Nenhum relato disponível para exportar no momento.");
+      return;
+    }
+    setIsExportingAllPdf(true);
+    setErrorMsg(null);
+
+    try {
+      // Landscape A4 for wide table presentation
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = 297;
+      const pageHeight = 210;
+      const margin = 12;
+      const contentWidth = pageWidth - (margin * 2); // 273mm
+      let currentY = 12;
+
+      // Column widths definition (sum = 273mm)
+      const colWidths = {
+        proto: 25,
+        data: 18,
+        setor: 32,
+        cat: 32,
+        urg: 20,
+        status: 22,
+        desc: 64,
+        parecer: 60
+      };
+
+      const drawHeaderBanner = () => {
+        // Emerald 800 top banner
+        doc.setFillColor(6, 95, 70);
+        doc.roundedRect(margin, currentY, contentWidth, 20, 1.5, 1.5, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('SAC CIPA · RELATÓRIO OFICIAL DE CHAMADOS E OCORRÊNCIAS (NR-5)', margin + 5, currentY + 7.5);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(209, 250, 229);
+        doc.text('Comissão Interna de Prevenção de Acidentes e Assédio · Eldorado Brasil', margin + 5, currentY + 13.5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`Total: ${records.length} chamados`, pageWidth - margin - 5, currentY + 7.5, { align: 'right' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(209, 250, 229);
+        doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} | Auditor: ${currentUserEmail}`, pageWidth - margin - 5, currentY + 13.5, { align: 'right' });
+
+        currentY += 24;
+      };
+
+      const drawKpisStrip = () => {
+        const total = records.length;
+        const pend = records.filter(r => r.status === 'pendente').length;
+        const anal = records.filter(r => r.status === 'em_analise').length;
+        const res = records.filter(r => r.status === 'resolvido').length;
+        const arq = records.filter(r => r.status === 'arquivado').length;
+        const resolRate = total > 0 ? Math.round(((res + arq) / total) * 100) : 0;
+
+        const kpis = [
+          { label: 'TOTAL DE CHAMADOS', val: `${total}`, color: [30, 41, 59] },
+          { label: 'PENDENTES', val: `${pend} (${total > 0 ? Math.round((pend/total)*100) : 0}%)`, color: [180, 83, 9] },
+          { label: 'EM INVESTIGAÇÃO', val: `${anal} (${total > 0 ? Math.round((anal/total)*100) : 0}%)`, color: [3, 105, 161] },
+          { label: 'RESOLVIDOS', val: `${res} (${total > 0 ? Math.round((res/total)*100) : 0}%)`, color: [4, 120, 87] },
+          { label: 'TAXA DE RESOLUÇÃO', val: `${resolRate}%`, color: [6, 95, 70] }
+        ];
+
+        const cardWidth = (contentWidth - ((kpis.length - 1) * 3)) / kpis.length;
+        kpis.forEach((kpi, idx) => {
+          const cardX = margin + idx * (cardWidth + 3);
+          doc.setFillColor(248, 250, 252);
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(cardX, currentY, cardWidth, 12, 1, 1, 'FD');
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.5);
+          doc.setTextColor(100, 116, 139);
+          doc.text(kpi.label, cardX + 3, currentY + 4.5);
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(kpi.color[0], kpi.color[1], kpi.color[2]);
+          doc.text(kpi.val, cardX + 3, currentY + 9.5);
+        });
+
+        currentY += 15;
+      };
+
+      const drawTableHeader = () => {
+        doc.setFillColor(241, 245, 249);
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(margin, currentY, contentWidth, 7, 'FD');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(51, 65, 85);
+
+        let curX = margin;
+        doc.text('PROTOCOLO', curX + 2, currentY + 4.8);
+        curX += colWidths.proto;
+        doc.text('DATA', curX + 2, currentY + 4.8);
+        curX += colWidths.data;
+        doc.text('SETOR / ÁREA', curX + 2, currentY + 4.8);
+        curX += colWidths.setor;
+        doc.text('CATEGORIA', curX + 2, currentY + 4.8);
+        curX += colWidths.cat;
+        doc.text('URGÊNCIA', curX + 2, currentY + 4.8);
+        curX += colWidths.urg;
+        doc.text('SITUAÇÃO', curX + 2, currentY + 4.8);
+        curX += colWidths.status;
+        doc.text('DESCRIÇÃO DO RELATO', curX + 2, currentY + 4.8);
+        curX += colWidths.desc;
+        doc.text('PARECER DA CIPA', curX + 2, currentY + 4.8);
+
+        currentY += 7;
+      };
+
+      // Draw initial page header and KPI summary
+      drawHeaderBanner();
+      drawKpisStrip();
+      drawTableHeader();
+
+      // Draw each record row
+      records.forEach((reg, index) => {
+        const splitDesc = doc.splitTextToSize(reg.info || 'Sem descrição', colWidths.desc - 4);
+        const splitNotes = doc.splitTextToSize(reg.adminNotes && reg.adminNotes.trim() ? reg.adminNotes.trim() : 'Pendente de parecer', colWidths.parecer - 4);
+        const splitArea = doc.splitTextToSize(reg.area || 'Não informado', colWidths.setor - 4);
+        const splitCat = doc.splitTextToSize(reg.category || 'Geral', colWidths.cat - 4);
+
+        const maxLines = Math.max(splitDesc.length, splitNotes.length, splitArea.length, splitCat.length, 1);
+        const rowHeight = Math.max(7.5, (maxLines * 3.4) + 3);
+
+        // Check if row fits on page
+        if (currentY + rowHeight > pageHeight - 16) {
+          doc.addPage();
+          currentY = 12;
+          drawTableHeader();
+        }
+
+        // Row background
+        if (index % 2 === 1) {
+          doc.setFillColor(250, 250, 252);
+          doc.rect(margin, currentY, contentWidth, rowHeight, 'F');
+        }
+
+        // Row borders
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin, currentY + rowHeight, margin + contentWidth, currentY + rowHeight);
+
+        // Render columns
+        let curX = margin;
+
+        // Protocolo
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(30, 41, 59);
+        const protoText = `#${(reg.id || '').substring(0, 10)}`;
+        doc.text(protoText, curX + 2, currentY + 4);
+        curX += colWidths.proto;
+
+        // Data
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        doc.text(reg.dateObservation || '', curX + 2, currentY + 4);
+        curX += colWidths.data;
+
+        // Setor
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(30, 41, 59);
+        doc.text(splitArea, curX + 2, currentY + 4);
+        curX += colWidths.setor;
+
+        // Categoria
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(51, 65, 85);
+        doc.text(splitCat, curX + 2, currentY + 4);
+        curX += colWidths.cat;
+
+        // Urgência
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        const urg = reg.urgency || 'baixa';
+        if (urg === 'alta' || urg === 'urgente') {
+          doc.setTextColor(185, 28, 28);
+          doc.text('ALTA', curX + 2, currentY + 4);
+        } else if (urg === 'media') {
+          doc.setTextColor(180, 83, 9);
+          doc.text('MÉDIA', curX + 2, currentY + 4);
+        } else {
+          doc.setTextColor(4, 120, 87);
+          doc.text('BAIXA', curX + 2, currentY + 4);
+        }
+        curX += colWidths.urg;
+
+        // Status
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        if (reg.status === 'resolvido') {
+          doc.setTextColor(4, 120, 87);
+          doc.text('RESOLVIDO', curX + 2, currentY + 4);
+        } else if (reg.status === 'em_analise') {
+          doc.setTextColor(3, 105, 161);
+          doc.text('EM ANÁLISE', curX + 2, currentY + 4);
+        } else if (reg.status === 'pendente') {
+          doc.setTextColor(180, 83, 9);
+          doc.text('PENDENTE', curX + 2, currentY + 4);
+        } else {
+          doc.setTextColor(71, 85, 105);
+          doc.text('ARQUIVADO', curX + 2, currentY + 4);
+        }
+        curX += colWidths.status;
+
+        // Descrição
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.8);
+        doc.setTextColor(30, 41, 59);
+        doc.text(splitDesc, curX + 2, currentY + 4);
+        curX += colWidths.desc;
+
+        // Parecer CIPA
+        doc.setFont('helvetica', reg.adminNotes ? 'normal' : 'italic');
+        doc.setFontSize(6.8);
+        doc.setTextColor(reg.adminNotes ? 30 : 148, reg.adminNotes ? 41 : 163, reg.adminNotes ? 59 : 184);
+        doc.text(splitNotes, curX + 2, currentY + 4);
+
+        currentY += rowHeight;
+      });
+
+      // Signatures block
+      if (currentY + 28 > pageHeight - 16) {
+        doc.addPage();
+        currentY = 16;
+      } else {
+        currentY += 6;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(30, 41, 59);
+      doc.text('VALIDAÇÃO E HOMOLOGAÇÃO DA COMISSÃO CIPA:', margin, currentY);
+      currentY += 12;
+
+      const sigWidth = (contentWidth - 20) / 3;
+      // 1. CIPA
+      doc.setDrawColor(148, 163, 184);
+      doc.line(margin, currentY, margin + sigWidth, currentY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text('Mesa Diretora CIPA', margin + (sigWidth / 2), currentY + 3.5, { align: 'center' });
+      doc.text('Data: ____/____/________', margin + (sigWidth / 2), currentY + 7, { align: 'center' });
+
+      // 2. SST
+      const sig2X = margin + sigWidth + 10;
+      doc.line(sig2X, currentY, sig2X + sigWidth, currentY);
+      doc.text('Técnico em Segurança do Trabalho (SST)', sig2X + (sigWidth / 2), currentY + 3.5, { align: 'center' });
+      doc.text('Data: ____/____/________', sig2X + (sigWidth / 2), currentY + 7, { align: 'center' });
+
+      // 3. Gestor
+      const sig3X = sig2X + sigWidth + 10;
+      doc.line(sig3X, currentY, sig3X + sigWidth, currentY);
+      doc.text('Gestão Geral de Operações', sig3X + (sigWidth / 2), currentY + 3.5, { align: 'center' });
+      doc.text('Data: ____/____/________', sig3X + (sigWidth / 2), currentY + 7, { align: 'center' });
+
+      // Page footers
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin, pageHeight - 8, pageWidth - margin, pageHeight - 8);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text('SAC CIPA · Relatório consolidado oficial de ocorrências de segurança emitido sob as diretrizes da NR-5.', margin, pageHeight - 5);
+        doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
+      }
+
+      const filename = `Relatorio_Geral_CIPA_${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(filename);
+
+      await logSystemAction('Exportar Relatório Geral PDF', `Gerou arquivo PDF consolidado contendo ${records.length} chamados da CIPA.`);
+
+      setSuccessMsg(`Relatório consolidado com ${records.length} chamados exportado em PDF com sucesso!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao gerar relatório geral em PDF:', err);
+      setErrorMsg(`Falha na exportação do relatório em PDF: ${err.message || err}`);
+    } finally {
+      setIsExportingAllPdf(false);
     }
   };
 
@@ -2136,15 +2771,36 @@ export default function AdminPanel({
                 ))}
               </div>
 
-              {/* In-app Text Search */}
-              <div className="w-full lg:w-auto">
+              {/* In-app Text Search and PDF Export Button */}
+              <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
                 <input
                   type="text"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   placeholder="Pesquisar relato por termo..."
-                  className="bg-slate-50 border border-slate-200 text-xs px-4 py-2 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 w-full lg:min-w-[240px]"
+                  className="bg-slate-50 border border-slate-200 text-xs px-4 py-2 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 flex-1 lg:min-w-[220px]"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => handleExportAllReportsPdf(filteredRegs)}
+                  disabled={isExportingAllPdf || filteredRegs.length === 0}
+                  id="export-all-pdf-btn"
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shadow-emerald-100 disabled:opacity-50 shrink-0"
+                  title="Exportar arquivo PDF formatado para impressão com os chamados listados (A4 Paisagem)"
+                >
+                  {isExportingAllPdf ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Gerando PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>Exportar Relatório (PDF)</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -2194,8 +2850,26 @@ export default function AdminPanel({
                       </p>
 
                       <div className="flex justify-between items-center pt-2.5 border-t border-slate-100 text-[9px] font-mono font-medium text-slate-400">
-                        <span>DATA: {reg.dateObservation}</span>
-                        <span>{reg.isIdentified ? 'Identificado' : 'Anônimo'}</span>
+                        <div className="flex items-center gap-2">
+                          <span>DATA: {reg.dateObservation}</span>
+                          {reg.photoData && (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-bold font-sans">
+                              <Camera className="h-2.5 w-2.5" /> Foto
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {reg.urgency && (
+                            <span className={`text-[8px] font-extrabold uppercase px-1 py-0.2 rounded ${
+                              reg.urgency === 'alta' ? 'bg-red-50 text-red-700' :
+                              reg.urgency === 'media' ? 'bg-amber-50 text-amber-700' :
+                              'bg-emerald-50 text-emerald-700'
+                            }`}>
+                              {reg.urgency}
+                            </span>
+                          )}
+                          <span>{reg.isIdentified ? 'Identificado' : 'Anônimo'}</span>
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -2391,7 +3065,28 @@ export default function AdminPanel({
                               </p>
                             </div>
 
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleExportSingleReportPdf(selectedReg)}
+                                disabled={isExportingPdf}
+                                id="export-single-pdf-btn"
+                                className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 px-3 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-xs active:scale-95 disabled:opacity-50"
+                                title="Exportar este chamado individual formatado para impressão em PDF (A4)"
+                              >
+                                {isExportingPdf ? (
+                                  <>
+                                    <RefreshCw className="h-4 w-4 animate-spin text-emerald-700" />
+                                    <span>Gerando...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Printer className="h-4 w-4 text-emerald-700" />
+                                    <span>Exportar Chamado (PDF)</span>
+                                  </>
+                                )}
+                              </button>
+
                               <button
                                 onClick={() => handleStartEditingReg(selectedReg)}
                                 id="edit-record-btn"
@@ -2414,18 +3109,18 @@ export default function AdminPanel({
                           </div>
 
                           {/* Info grid detail cards */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                             <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
                               <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                                 <MapPin className="h-3 w-3 text-emerald-600" /> Setor Declarado
                               </p>
-                              <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.area}</p>
+                              <p className="text-xs font-bold text-slate-700 mt-1 truncate" title={selectedReg.area}>{selectedReg.area}</p>
                             </div>
                             <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
                               <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                                 <Tag className="h-3 w-3 text-emerald-600" /> Categoria
                               </p>
-                              <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.category}</p>
+                              <p className="text-xs font-bold text-slate-700 mt-1 truncate" title={selectedReg.category}>{selectedReg.category}</p>
                             </div>
                             <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
                               <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
@@ -2433,7 +3128,56 @@ export default function AdminPanel({
                               </p>
                               <p className="text-xs font-bold text-slate-700 mt-1">{selectedReg.dateObservation}</p>
                             </div>
+                            <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                <Flame className="h-3 w-3 text-emerald-600" /> Urgência
+                              </p>
+                              <p className="text-xs font-bold mt-1">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                                  selectedReg.urgency === 'alta' ? 'bg-red-50 text-red-800 border-red-200' :
+                                  selectedReg.urgency === 'media' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                                  'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}>
+                                  {selectedReg.urgency || 'Rotina'}
+                                </span>
+                              </p>
+                            </div>
                           </div>
+
+                          {/* Photographic Evidence Attachment */}
+                          {selectedReg.photoData && (
+                            <div className="space-y-2 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block flex items-center gap-1.5 select-none">
+                                <Camera className="h-4 w-4 text-emerald-600" /> Evidência Fotográfica Anexada pelo Colaborador:
+                              </label>
+                              <div className="flex items-center gap-4">
+                                <div 
+                                  onClick={() => setAdminPhotoZoom(selectedReg.photoData || null)}
+                                  className="relative h-20 w-20 rounded-xl overflow-hidden border border-slate-300 cursor-pointer group shrink-0"
+                                >
+                                  <img 
+                                    src={selectedReg.photoData} 
+                                    alt="Foto da ocorrência" 
+                                    className="h-full w-full object-cover group-hover:scale-105 transition-transform" 
+                                  />
+                                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <ZoomIn className="h-5 w-5 text-white" />
+                                  </div>
+                                </div>
+                                <div className="space-y-1 text-xs">
+                                  <p className="font-bold text-slate-700">Foto registrada no momento da abertura do chamado</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdminPhotoZoom(selectedReg.photoData || null)}
+                                    className="text-emerald-700 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <ZoomIn className="h-3.5 w-3.5" />
+                                    <span>Clique aqui para ampliar em tela cheia</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Original description */}
                           <div className="space-y-2">
@@ -2501,8 +3245,20 @@ export default function AdminPanel({
                               />
                             </div>
 
-                            {/* Save notes button */}
-                            <div className="flex justify-end gap-3">
+                            {/* Save notes & actions button */}
+                            <div className="flex flex-wrap justify-between items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleExportSingleReportPdf(selectedReg)}
+                                disabled={isExportingPdf}
+                                id="export-single-pdf-bottom-btn"
+                                className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50 border border-slate-200"
+                                title="Exportar documento oficial em PDF formatado para impressão"
+                              >
+                                <Printer className="h-3.5 w-3.5 text-slate-600" />
+                                <span>Exportar Relatório (PDF)</span>
+                              </button>
+
                               <button
                                 onClick={() => handleUpdateRegistration(selectedReg.status, adminNotesText)}
                                 disabled={updatingStatus}
@@ -3100,7 +3856,26 @@ export default function AdminPanel({
               )}
 
               {/* Printing guidance / Close CTA */}
-              <div className="flex gap-3 justify-end items-center pt-3 border-t border-slate-100 print:hidden">
+              <div className="flex flex-wrap gap-3 justify-end items-center pt-3 border-t border-slate-100 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => handleExportAllReportsPdf(dashboardFilteredRegs)}
+                  disabled={isExportingAllPdf || dashboardFilteredRegs.length === 0}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                  title="Baixar arquivo PDF profissional formatado para impressão em formato A4"
+                >
+                  {isExportingAllPdf ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin text-white" />
+                      <span>Gerando PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-4 w-4" />
+                      <span>Baixar Relatório em PDF</span>
+                    </>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -3110,23 +3885,52 @@ export default function AdminPanel({
                       console.error("Print failed:", err);
                     }
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                  className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center gap-1.5"
                 >
                   <Download className="h-4 w-4" />
-                  <span>Imprimir Relatório (PDF)</span>
+                  <span>Imprimir</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowExecutiveReport(false)}
                   className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all active:scale-95"
                 >
-                  Fechar Visualização
+                  Fechar
                 </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Admin Photo Zoom Modal */}
+      {adminPhotoZoom && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setAdminPhotoZoom(null)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setAdminPhotoZoom(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img 
+              src={adminPhotoZoom} 
+              alt="Evidência ampliada" 
+              className="max-h-[80vh] w-auto mx-auto object-contain rounded-xl"
+            />
+            <div className="p-3 text-center text-xs text-slate-600 font-mono">
+              Visualização de Evidência Fotográfica CIPA
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

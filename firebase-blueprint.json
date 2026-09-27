@@ -25,6 +25,8 @@
         "area": { "type": "string", "description": "The administrative or operational area" },
         "category": { "type": "string", "description": "Category of feedback" },
         "info": { "type": "string", "description": "Observed feedback description and details" },
+        "urgency": { "type": "string", "enum": ["baixa", "media", "alta", "urgente"], "description": "Urgency / severity level" },
+        "photoData": { "type": "string", "description": "Base64 encoded photographic evidence or image" },
         "status": { "type": "string", "enum": ["pendente", "em_analise", "resolvido", "arquivado"], "description": "Current status" },
         "adminNotes": { "type": "string", "description": "Internal notes by CIPA administrators" },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the record was created" },

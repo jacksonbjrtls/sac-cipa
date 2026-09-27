@@ -47,7 +47,7 @@ service cloud.firestore {
     // Registration validation helper
     function isValidRegistration(data) {
       return data.keys().hasAll(['agreedToShare', 'dateObservation', 'isIdentified', 'area', 'category', 'info', 'status', 'createdAt']) &&
-             data.keys().size() >= 8 && data.keys().size() <= 16 &&
+             data.keys().size() >= 8 && data.keys().size() <= 20 &&
              data.agreedToShare is bool &&
              data.dateObservation is string && data.dateObservation.size() <= 20 &&
              data.isIdentified is bool &&
@@ -59,6 +59,8 @@ service cloud.firestore {
              data.category is string && data.category.size() <= 200 &&
              data.info is string && data.info.size() <= 10000 &&
              data.status is string && data.status in ['pendente', 'em_analise', 'resolvido', 'arquivado'] &&
+             (!('urgency' in data) || (data.urgency is string && data.urgency in ['baixa', 'media', 'alta', 'urgente'])) &&
+             (!('photoData' in data) || (data.photoData is string && data.photoData.size() <= 500000)) &&
              ((request.method == 'create' && data.createdAt == request.time) || (request.method == 'update' && data.createdAt == resource.data.createdAt)) &&
              // Admin fields (optional on create, verified on write)
              (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 5000)) &&

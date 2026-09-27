@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   Search, Calendar, Tag, MapPin, 
-  Clock, AlertCircle, FileText, MessageSquare
+  Clock, AlertCircle, FileText, MessageSquare,
+  Flame, Camera, ZoomIn, X
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../firebase';
@@ -17,6 +18,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
   const [loading, setLoading] = useState<boolean>(false);
   const [record, setRecord] = useState<Registration | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [photoModalOpen, setPhotoModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialProtocolId) {
@@ -72,6 +74,31 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
         return { text: 'Arquivado', color: 'bg-slate-100 text-slate-600 border border-slate-200' };
       default:
         return { text: status, color: 'bg-slate-100 text-slate-655' };
+    }
+  };
+
+  const urgencyBadge = (urgency?: string) => {
+    switch (urgency) {
+      case 'alta':
+      case 'urgente':
+        return {
+          text: 'Crítica / Alta',
+          color: 'bg-red-50 text-red-800 border-red-200',
+          icon: Flame
+        };
+      case 'media':
+        return {
+          text: 'Atenção / Média',
+          color: 'bg-amber-50 text-amber-800 border-amber-200',
+          icon: Clock
+        };
+      case 'baixa':
+      default:
+        return {
+          text: 'Rotina / Baixa',
+          color: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          icon: Tag
+        };
     }
   };
 
@@ -169,7 +196,7 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
           </div>
 
           {/* Quick specs */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-50/50 border border-slate-100">
               <Calendar className="h-5 w-5 text-emerald-600" />
               <div>
@@ -193,7 +220,56 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
                 <p className="text-xs font-bold text-slate-705 truncate" title={record.category}>{record.category}</p>
               </div>
             </div>
+
+            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-50/50 border border-slate-100">
+              {React.createElement(urgencyBadge(record.urgency).icon, { className: "h-5 w-5 text-emerald-600 shrink-0" })}
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Urgência</p>
+                <p className="text-xs font-bold truncate">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${urgencyBadge(record.urgency).color}`}>
+                    {urgencyBadge(record.urgency).text}
+                  </span>
+                </p>
+              </div>
+            </div>
           </div>
+
+          {/* Photographic Evidence if present */}
+          {record.photoData && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-slate-500 font-bold text-xs select-none">
+                <Camera className="h-4 w-4 text-emerald-600" />
+                <span>EVIDÊNCIA FOTOGRÁFICA ANEXADA</span>
+              </div>
+              <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-2xl max-w-md">
+                <div 
+                  onClick={() => setPhotoModalOpen(true)}
+                  className="relative h-20 w-20 rounded-xl overflow-hidden border border-slate-200 cursor-pointer group shrink-0"
+                >
+                  <img 
+                    src={record.photoData} 
+                    alt="Evidência fotográfica" 
+                    className="h-full w-full object-cover group-hover:scale-105 transition-transform" 
+                  />
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <ZoomIn className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-800">Foto registrada pelo colaborador</p>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">Clique na imagem para ampliar</p>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoModalOpen(true)}
+                    className="mt-2 text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <ZoomIn className="h-3.5 w-3.5" />
+                    <span>Visualizar em tela cheia</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Content details */}
           <div className="space-y-2">
@@ -249,6 +325,35 @@ export default function ProtocolTracker({ initialProtocolId = '' }: ProtocolTrac
             )}
           </div>
         </motion.div>
+      )}
+
+      {/* High-Resolution Zoom Lightbox Modal */}
+      {photoModalOpen && record && record.photoData && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setPhotoModalOpen(false)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoModalOpen(false)}
+              className="absolute top-4 right-4 z-10 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img 
+              src={record.photoData} 
+              alt="Evidência ampliada" 
+              className="max-h-[80vh] w-auto mx-auto object-contain rounded-xl"
+            />
+            <div className="p-3 text-center text-xs text-slate-600 font-mono">
+              Protocolo #CIPA-{record.id} · Evidência Fotográfica
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

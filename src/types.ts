@@ -42,6 +42,8 @@ export interface Registration {
   area: string;
   category: string;
   info: string;
+  urgency?: 'baixa' | 'media' | 'alta' | 'urgente';
+  photoData?: string;
   status: 'pendente' | 'em_analise' | 'resolvido' | 'arquivado';
   adminNotes?: string;
   createdAt: any; // Firestore Timestamp
