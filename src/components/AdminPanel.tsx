@@ -11,7 +11,8 @@ import {
 import { jsPDF } from 'jspdf';
 import { 
   collection, doc, onSnapshot, setDoc, 
-  updateDoc, deleteDoc, serverTimestamp, query, orderBy, addDoc
+  updateDoc, deleteDoc, serverTimestamp, query, orderBy, addDoc,
+  writeBatch, getDocs
 } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../firebase';
 import { Registration, DbAdmin, OperationType, SystemLog } from '../types';
@@ -86,6 +87,9 @@ export default function AdminPanel({
     }
   };
 
+
+  // Master Admin (Owner) identification
+  const isMasterAdmin = currentUserEmail?.toLowerCase().trim() === 'jacksonbjr@gmail.com';
 
   // Errors / Success Messages
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -261,144 +265,434 @@ export default function AdminPanel({
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [isExportingAllPdf, setIsExportingAllPdf] = useState<boolean>(false);
 
-  // CSV Import related states
+  // Master Admin: Delete All Registrations state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState<boolean>(false);
+  const [deleteAllConfirmInput, setDeleteAllConfirmInput] = useState<string>('');
+  const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
+
+  const handleDeleteAllRegistrations = async () => {
+    if (!isMasterAdmin) {
+      setErrorMsg('Acesso Negado: Apenas o Super Administrador (jacksonbjr@gmail.com) tem permissão para apagar todos os relatos.');
+      return;
+    }
+    if (deleteAllConfirmInput.trim() !== 'EXCLUIR TUDO') {
+      setErrorMsg('Você precisa digitar exatamente "EXCLUIR TUDO" para autorizar a exclusão.');
+      return;
+    }
+
+    setIsDeletingAll(true);
+    setErrorMsg(null);
+    try {
+      const countToDelete = registrations.length;
+      if (isSimulated) {
+        localStorage.removeItem('cipa_mock_registrations');
+        setRegistrations([]);
+        setSuccessMsg(`Simulação: Todos os ${countToDelete} relatos foram excluídos com sucesso.`);
+      } else {
+        const q = query(collection(db, 'registrations'));
+        const snapshot = await getDocs(q);
+        const docs = snapshot.docs;
+        
+        // Chunk deletions into batches of 400
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+          const chunk = docs.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach((docSnap) => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+        }
+        setRegistrations([]);
+        setSuccessMsg(`Sucesso: Todos os ${docs.length} relatos foram apagados permanentemente do banco de dados.`);
+      }
+
+      await logSystemAction('Exclusão em Massa', `O Super Administrador ${currentUserEmail} apagou todos os ${registrations.length} relatos da base de dados.`);
+      setSelectedReg(null);
+      setShowDeleteAllModal(false);
+      setDeleteAllConfirmInput('');
+    } catch (err: any) {
+      console.error('Erro ao excluir todos os relatos:', err);
+      try {
+        handleFirestoreError(err, OperationType.DELETE, 'registrations');
+      } catch (finalErr: any) {
+        setErrorMsg(`Falha ao excluir relatos: ${finalErr.message}`);
+      }
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
+  // CSV Import related states (Exclusivo Master Admin)
   const [showImportCsvSection, setShowImportCsvSection] = useState<boolean>(false);
+  const [csvInputMethod, setCsvInputMethod] = useState<'file' | 'paste'>('file');
+  const [csvRawPastedText, setCsvRawPastedText] = useState<string>('');
   const [csvParsedRows, setCsvParsedRows] = useState<any[]>([]);
   const [csvParseError, setCsvParseError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [csvFileName, setCsvFileName] = useState<string>('');
 
-  const parseCSV = (text: string) => {
-    // Strip Byte Order Mark (BOM) if present to prevent header corruption
+  // Repairs damaged character encodings, Microsoft Forms export artifacts and mojibake in Portuguese terms
+  const repairDamagedEncoding = (text: string): string => {
+    if (!text) return '';
+    return text
+      .replace(/^[\uFEFF]/, '')
+      .replace(/Observa[\uFFFD?]+o/gi, 'Observação')
+      .replace(/Gerncia/gi, 'Gerência')
+      .replace(/Ger[\uFFFD?]+ncia/gi, 'Gerência')
+      .replace(/Seguran[\uFFFD?]+a/gi, 'Segurança')
+      .replace(/Segurana/gi, 'Segurança')
+      .replace(/Log[\uFFFD?]+stica/gi, 'Logística')
+      .replace(/Logstica/gi, 'Logística')
+      .replace(/Administra[\uFFFD?]+o/gi, 'Administração')
+      .replace(/Administrao/gi, 'Administração')
+      .replace(/Servi[\uFFFD?]+os/gi, 'Serviços')
+      .replace(/Servios/gi, 'Serviços')
+      .replace(/Manuten[\uFFFD?]+o/gi, 'Manutenção')
+      .replace(/Manuteno/gi, 'Manutenção')
+      .replace(/Eletr[\uFFFD?]+ca/gi, 'Elétrica')
+      .replace(/Eletrca/gi, 'Elétrica')
+      .replace(/Mec[\uFFFD?]+nica/gi, 'Mecânica')
+      .replace(/Mecnica/gi, 'Mecânica')
+      .replace(/Instrumenta[\uFFFD?]+o/gi, 'Instrumentação')
+      .replace(/Instrumentao/gi, 'Instrumentação')
+      .replace(/Caustifica[\uFFFD?]+o/gi, 'Caustificação')
+      .replace(/Caustificao/gi, 'Caustificação')
+      .replace(/Inova[\uFFFD?]+o/gi, 'Inovação')
+      .replace(/Inovao/gi, 'Inovação')
+      .replace(/P[\uFFFD?]+tio de Madeira/gi, 'Pátio de Madeira')
+      .replace(/Ptio de Madeira/gi, 'Pátio de Madeira')
+      .replace(/D[\uFFFD?]+vida/gi, 'Dúvida')
+      .replace(/Dvida/gi, 'Dúvida')
+      .replace(/Cr[\uFFFD?]+tica/gi, 'Crítica')
+      .replace(/Crtica/gi, 'Crítica')
+      .replace(/Reclama[\uFFFD?]+o/gi, 'Reclamação')
+      .replace(/Reclamao/gi, 'Reclamação')
+      .replace(/Inc[\uFFFD?]+ndio/gi, 'Incêndio')
+      .replace(/Incndio/gi, 'Incêndio')
+      .replace(/Condi[\uFFFD?]+o/gi, 'Condição')
+      .replace(/Condio/gi, 'Condição')
+      .replace(/Sugest[\uFFFD?]+o/gi, 'Sugestão')
+      .replace(/Sugesto/gi, 'Sugestão')
+      .replace(/boas pr[\uFFFD?]+ticas/gi, 'boas práticas')
+      .replace(/boas prticas/gi, 'boas práticas')
+      .replace(/Parab[\uFFFD?]+ns/gi, 'Parabéns')
+      .replace(/Parabns/gi, 'Parabéns')
+      .replace(/comunica[\uFFFD?]+o/gi, 'comunicação')
+      .replace(/comunicao/gi, 'comunicação')
+      .replace(/gest[\uFFFD?]+o/gi, 'gestão')
+      .replace(/gesto/gi, 'gestão')
+      .replace(/apresenta[\uFFFD?]+o/gi, 'apresentação')
+      .replace(/apresentao/gi, 'apresentação')
+      .replace(/atribui[\uFFFD?]+es/gi, 'atribuições')
+      .replace(/atribuies/gi, 'atribuições')
+      .replace(/pr[\uFFFD?]+ximo/gi, 'próximo')
+      .replace(/prximo/gi, 'próximo')
+      .replace(/avan[\uFFFD?]+o/gi, 'avanço')
+      .replace(/avano/gi, 'avanço')
+      .replace(/moderniza[\uFFFD?]+o/gi, 'modernização')
+      .replace(/modernizao/gi, 'modernização')
+      .replace(/transpar[\uFFFD?]+ncia/gi, 'transparência')
+      .replace(/transparncia/gi, 'transparência')
+      .replace(/organiza[\uFFFD?]+o/gi, 'organização')
+      .replace(/organizao/gi, 'organização')
+      .replace(/dedica[\uFFFD?]+o/gi, 'dedicação')
+      .replace(/dedicao/gi, 'dedicação')
+      .replace(/asm[\uFFFD?]+tico/gi, 'asmático')
+      .replace(/asmtico/gi, 'asmático')
+      .replace(/pr[\uFFFD?]+dio/gi, 'prédio')
+      .replace(/prdio/gi, 'prédio')
+      .replace(/Ba[\uFFFD?]+as/gi, 'Baías')
+      .replace(/Baas/gi, 'Baías')
+      .replace(/[\uFFFD?]+nibus/gi, 'ônibus')
+      .replace(/b[\uFFFD?]+sico/gi, 'básico')
+      .replace(/bsico/gi, 'básico')
+      .replace(/\bns\b/g, 'nós')
+      .replace(/\bpeo\b/g, 'peço')
+      .replace(/\bvocs\b/g, 'vocês')
+      .replace(/aten[\uFFFD?]+o/gi, 'atenção')
+      .replace(/ateno/gi, 'atenção')
+      .replace(/el[\uFFFD?]+tricas/gi, 'elétricas')
+      .replace(/eltricas/gi, 'elétricas')
+      .replace(/v[\uFFFD?]+rias/gi, 'várias')
+      .replace(/vrias/gi, 'várias')
+      .replace(/ind[\uFFFD?]+stria/gi, 'indústria')
+      .replace(/indstria/gi, 'indústria')
+      .replace(/utiliza[\uFFFD?]+o/gi, 'utilização')
+      .replace(/utilizao/gi, 'utilização')
+      .replace(/poss[\uFFFD?]+vel/gi, 'possível')
+      .replace(/possvel/gi, 'possível')
+      .replace(/\baps\b/gi, 'após')
+      .replace(/quest[\uFFFD?]+es/gi, 'questões')
+      .replace(/questes/gi, 'questões')
+      .replace(/sa[\uFFFD?]+de/gi, 'saúde')
+      .replace(/sade/gi, 'saúde')
+      .replace(/caminh[\uFFFD?]+o/gi, 'caminhão')
+      .replace(/caminho/gi, 'caminhão')
+      .replace(/algu[\uFFFD?]+m/gi, 'alguém')
+      .replace(/algun/gi, 'alguém')
+      .replace(/ocorr[\uFFFD?]+ncia/gi, 'ocorrência')
+      .replace(/ocorrncia/gi, 'ocorrência')
+      .replace(/m[\uFFFD?]+scaras/gi, 'máscaras')
+      .replace(/mscaras/gi, 'máscaras')
+      .replace(/situa[\uFFFD?]+es/gi, 'situações')
+      .replace(/situaes/gi, 'situações')
+      .replace(/propaga[\uFFFD?]+o/gi, 'propagação')
+      .replace(/propagao/gi, 'propagação')
+      .replace(/ve[\uFFFD?]+culos/gi, 'veículos')
+      .replace(/veculos/gi, 'veículos')
+      .replace(/ve[\uFFFD?]+culo/gi, 'veículo')
+      .replace(/veculo/gi, 'veículo')
+      .replace(/proibi[\uFFFD?]+o/gi, 'proibição')
+      .replace(/proibio/gi, 'proibição')
+      .replace(/avalia[\uFFFD?]+o/gi, 'avaliação')
+      .replace(/avaliao/gi, 'avaliação')
+      .replace(/documenta[\uFFFD?]+o/gi, 'documentação')
+      .replace(/documentao/gi, 'documentação')
+      .replace(/diferen[\uFFFD?]+a/gi, 'diferença')
+      .replace(/diferena/gi, 'diferença')
+      .replace(/diferna/gi, 'diferença')
+      .replace(/execu[\uFFFD?]+o/gi, 'execução')
+      .replace(/execuo/gi, 'execução')
+      .replace(/reuni[\uFFFD?]+es/gi, 'reuniões')
+      .replace(/reunies/gi, 'reuniões')
+      .replace(/usu[\uFFFD?]+rios/gi, 'usuários')
+      .replace(/usurios/gi, 'usuários')
+      .replace(/condu[\uFFFD?]+o/gi, 'condução')
+      .replace(/conduo/gi, 'condução')
+      .replace(/percep[\uFFFD?]+o/gi, 'percepção')
+      .replace(/percepo/gi, 'percepção')
+      .replace(/h[\uFFFD?]+bito/gi, 'hábito')
+      .replace(/hbito/gi, 'hábito')
+      .replace(/preocupa[\uFFFD?]+o/gi, 'preocupação')
+      .replace(/preocupao/gi, 'preocupação')
+      .replace(/orienta[\uFFFD?]+es/gi, 'orientações')
+      .replace(/orientaes/gi, 'orientações')
+      .replace(/Agrade[\uFFFD?]+o/gi, 'Agradeço')
+      .replace(/Agradeo/gi, 'Agradeço')
+      .replace(/Di[\uFFFD?]+logos Di[\uFFFD?]+rios/gi, 'Diálogos Diários')
+      .replace(/Dilogos Dirios/gi, 'Diálogos Diários')
+      .replace(/\btm\b/g, 'têm')
+      .replace(/a[\uFFFD?]+o/gi, 'ação');
+  };
+
+  // Robust RFC 4180 compliant CSV parser with support for multiline quoted text and embedded newlines
+  const parseFullCSV = (text: string) => {
     const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
-    const lines = cleanText.split(/\r?\n/);
-    if (lines.length === 0) return { results: [], separator: ';' };
+    if (!cleanText.trim()) return { results: [], separator: ';' };
 
-    const firstLine = lines[0] || '';
-    const commaCount = (firstLine.match(/,/g) || []).length;
-    const semicolonCount = (firstLine.match(/;/g) || []).length;
-    const separator = semicolonCount > commaCount ? ';' : ',';
+    // Detect delimiter
+    const firstLineEnd = cleanText.indexOf('\n');
+    const headerSample = cleanText.slice(0, firstLineEnd > 0 ? firstLineEnd : 500);
+    const semicolonCount = (headerSample.match(/;/g) || []).length;
+    const commaCount = (headerSample.match(/,/g) || []).length;
+    const separator = semicolonCount >= commaCount ? ';' : ',';
 
-    const parseCSVLine = (line: string) => {
-      const result: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === separator && !inQuotes) {
-          result.push(current.trim());
-          current = '';
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentVal = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < cleanText.length; i++) {
+      const char = cleanText[i];
+      const nextChar = cleanText[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentVal += '"';
+          i++;
         } else {
-          current += char;
+          inQuotes = !inQuotes;
         }
+      } else if (char === separator && !inQuotes) {
+        currentRow.push(currentVal.trim());
+        currentVal = '';
+      } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+        currentRow.push(currentVal.trim());
+        currentVal = '';
+        if (currentRow.some(c => c.length > 0)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+      } else {
+        currentVal += char;
       }
-      result.push(current.trim());
-      return result;
-    };
+    }
 
-    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim()
-      .replace(/^[\uFEFF]/, '') // Ensure any rogue BOM is removed from individual headers
-      .replace(/^["']|["']$/g, '')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-      .replace(/\s+/g, '_')
+    if (currentVal.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentVal.trim());
+      if (currentRow.some(c => c.length > 0)) {
+        rows.push(currentRow);
+      }
+    }
+
+    if (rows.length < 2) return { results: [], separator };
+
+    // Normalize headers
+    const rawHeaders = rows[0];
+    const headers = rawHeaders.map(h => 
+      h.toLowerCase().trim()
+        .replace(/^["']|["']$/g, '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '')
     );
 
     const results: any[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const values = parseCSVLine(line).map(v => v.replace(/^["']|["']$/g, '').trim());
-      
-      const row: any = {};
-      headers.forEach((header, idx) => {
-        if (header) {
-          row[header] = values[idx] || '';
+    for (let i = 1; i < rows.length; i++) {
+      const rowValues = rows[i];
+      if (rowValues.length === 0 || !rowValues.some(v => v.length > 0)) continue;
+
+      const rowObj: Record<string, string> = {};
+      headers.forEach((h, colIdx) => {
+        let val = (rowValues[colIdx] || '').trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.slice(1, -1).replace(/""/g, '"').trim();
         }
+        rowObj[h] = val;
       });
-      results.push(row);
+
+      rowObj['_originalIndex'] = String(i);
+      results.push(rowObj);
     }
+
     return { results, separator };
   };
 
   const mapParsedRowToRegistration = (row: any): Registration => {
-    const getValue = (keys: string[]) => {
-      for (const k of keys) {
-        if (row[k] !== undefined) return row[k];
+    // Helper to get normalized value by possible column name matches
+    const getValue = (candidateKeys: string[]) => {
+      for (const cand of candidateKeys) {
+        for (const [k, v] of Object.entries(row)) {
+          if (!v) continue;
+          const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanCand = cand.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (cleanK === cleanCand || cleanK.includes(cleanCand) || cleanCand.includes(cleanK)) {
+            return String(v).trim();
+          }
+        }
       }
       return '';
     };
 
-    const dateVal = getValue(['data_observacao', 'data', 'date_observation', 'date']);
-    const categoryVal = getValue(['categoria', 'category', 'tipo']);
-    const sectorVal = getValue(['area', 'setor', 'department']);
-    const infoVal = getValue(['informacao', 'descricao', 'info', 'description']);
-    const isIdentifiedVal = getValue(['identificado', 'identified', 'anonimo', 'anonymous']);
-    const nameVal = getValue(['nome', 'name']);
-    const emailVal = getValue(['email', 'e_mail']);
-    const phoneVal = getValue(['telefone', 'phone', 'celular']);
-    const agreeToShareVal = getValue(['compartilhar_dados', 'agreed_to_share', 'compartilhar', 'divulgar']);
-    const statusVal = getValue(['status', 'situacao']);
-    const adminNotesVal = getValue(['parecer_cipa', 'admin_notes', 'parecer', 'notas']);
+    // ID
+    const rowId = getValue(['id', 'codigo', 'protocolo', 'identificador']);
 
-    // Date formatter dd/MM/yyyy
-    let dateStr = dateVal;
+    // Date
+    const obsDate = getValue(['informe_a_data_da_observacao', 'informeadatadaobservacao', 'data_observacao', 'dataobservacao', 'data', 'date']);
+    const startDate = getValue(['hora_de_inicio', 'horadeinicio', 'hora_de_conclusao', 'criado_em']);
+    let dateStr = obsDate || '';
+    if (!dateStr && startDate) {
+      const parts = startDate.split(' ')[0].split(/[\/\-]/);
+      if (parts.length === 3) {
+        const m = parts[0].padStart(2, '0');
+        const d = parts[1].padStart(2, '0');
+        const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        dateStr = `${d}/${m}/${y}`;
+      }
+    }
     if (!dateStr) {
       const today = new Date();
-      const dd = String(today.getDate()).padStart(2, '0');
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const yyyy = today.getFullYear();
-      dateStr = `${dd}/${mm}/${yyyy}`;
+      dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
     }
 
-    // Identified logic
-    let isId = true;
-    if (isIdentifiedVal !== undefined) {
-      const cleanId = String(isIdentifiedVal).toLowerCase().trim();
-      if (cleanId === 'false' || cleanId === 'nao' || cleanId === 'não' || cleanId === 'anonimo' || cleanId === 'anônimo') {
-        isId = false;
-      }
+    // Category mapping
+    const rawCat = getValue(['o_que_deseja_registrar', 'oquedesejaregistrar', 'categoria', 'tipo', 'classificacao']);
+    let category = '💡 Sugestão';
+    let urgency: 'baixa' | 'media' | 'alta' = 'baixa';
+    const lowCat = rawCat.toLowerCase();
+    if (lowCat.includes('elogio') || lowCat.includes('reconhecimento') || lowCat.includes('boas praticas') || lowCat.includes('boas prticas')) {
+      category = '👏 Elogio';
+      urgency = 'baixa';
+    } else if (lowCat.includes('insegur') || lowCat.includes('acidente') || lowCat.includes('incidente') || lowCat.includes('vazamento') || lowCat.includes('incendio') || lowCat.includes('incndio')) {
+      category = '⚠️ Condição Insegura';
+      urgency = 'alta';
+    } else if (lowCat.includes('sugest') || lowCat.includes('melhoria')) {
+      category = '💡 Sugestão';
+      urgency = 'baixa';
+    } else if (lowCat.includes('duvida') || lowCat.includes('dvida') || lowCat.includes('epi') || lowCat.includes('treinamento') || lowCat.includes('sipat')) {
+      category = '❓ Dúvida';
+      urgency = 'media';
+    } else if (lowCat.includes('critica') || lowCat.includes('crtica') || lowCat.includes('reclam')) {
+      category = '📢 Reclamação';
+      urgency = 'media';
+    }
+
+    // Sector / Area
+    let areaVal = getValue(['qual_e_sua_area', 'qualesuaarea', 'area', 'setor', 'departamento', 'local']);
+    if (!areaVal || areaVal.trim() === '') {
+      areaVal = 'Outra';
     } else {
-      isId = !!nameVal;
+      areaVal = areaVal.trim();
     }
 
-    // Agree logic
-    let agree = true;
-    if (agreeToShareVal !== undefined) {
-      const cleanAg = String(agreeToShareVal).toLowerCase().trim();
-      if (cleanAg === 'false' || cleanAg === 'nao' || cleanAg === 'não') {
-        agree = false;
-      }
+    // Identification
+    const anonPrompt = getValue(['deseja_se_identificar', 'desejaseidentificar', 'identificado', 'anonimo']);
+    const nameVal = getValue(['informe_o_seu_nome', 'informeoseunome', 'nome', 'colaborador', 'autor']);
+    const emailVal = getValue(['informe_seu_e_mail', 'informeseuemail', 'email', 'correio']);
+    const phoneVal = getValue(['informe_seu_telefone', 'informeseutelefone', 'telefone', 'celular', 'contato']);
+
+    let isIdentified = true;
+    const cleanAnon = anonPrompt.toLowerCase();
+    if (cleanAnon === 'nao' || cleanAnon === 'não' || cleanAnon === 'no' || cleanAnon === 'false' || cleanAnon === '0') {
+      isIdentified = false;
+    } else if (!nameVal || nameVal.trim() === '' || nameVal.toLowerCase() === 'anonymous' || nameVal.toLowerCase() === 'anonimo') {
+      isIdentified = false;
     }
 
-    // Status logic
-    let sVal: 'pendente' | 'em_analise' | 'resolvido' | 'arquivado' = 'pendente';
-    if (statusVal) {
-      const s = String(statusVal).toLowerCase().trim();
-      if (s === 'em_analise' || s === 'analise' || s === 'investigacao' || s === 'investigação' || s === '⚙️') {
-        sVal = 'em_analise';
-      } else if (s === 'resolvido' || s === 'concluido' || s === 'concluído' || s === 'resolvida' || s === '✅') {
-        sVal = 'resolvido';
-      } else if (s === 'arquivado' || s === 'arquivada' || s === 'rejeitado' || s === 'rejeitada' || s === 'fechado' || s === '📦') {
-        sVal = 'arquivado';
-      }
+    // Info / Description
+    let infoVal = getValue(['descreva_sua_informacao', 'descrevasuainformacao', 'informacao', 'descricao', 'relato', 'detalhes']);
+    if (!infoVal) {
+      infoVal = 'Relato importado via planilha do SAC CIPA.';
     }
 
-    return {
+    // Agreement to share
+    const agreeVal = getValue(['este_canal_de_comunicacao', 'estecanaldecomunicacao', 'voceestadeacordo', 'compartilhar', 'divulgar']);
+    let agreedToShare = true;
+    if (agreeVal.toLowerCase().includes('nao') || agreeVal.toLowerCase().includes('não') || agreeVal.toLowerCase().includes('no concorda')) {
+      agreedToShare = false;
+    }
+
+    // Status
+    const statusVal = getValue(['status', 'situacao']);
+    let status: 'pendente' | 'em_analise' | 'resolvido' | 'arquivado' = 'pendente';
+    const lowStatus = statusVal.toLowerCase();
+    if (lowStatus.includes('analise') || lowStatus.includes('investig')) {
+      status = 'em_analise';
+    } else if (lowStatus.includes('resolv') || lowStatus.includes('conclu')) {
+      status = 'resolvido';
+    } else if (lowStatus.includes('arquiv') || lowStatus.includes('fechad')) {
+      status = 'arquivado';
+    }
+
+    const reg: Registration = {
       dateObservation: dateStr,
-      category: categoryVal || '💡Sugestão',
-      area: sectorVal || 'Outra',
-      info: infoVal || 'Relato sem descrição importado via planilha.',
-      isIdentified: isId,
-      name: isId ? (nameVal || 'Colaborador Anônimo') : '',
-      email: isId ? (emailVal || '') : '',
-      phone: isId ? (phoneVal || '') : '',
-      agreedToShare: agree,
-      status: sVal,
-      adminNotes: adminNotesVal || '',
+      category,
+      area: areaVal,
+      info: infoVal,
+      isIdentified,
+      urgency,
+      agreedToShare,
+      status,
+      adminNotes: getValue(['parecer_cipa', 'parecercipa', 'parecer', 'adminnotes', 'respostacipa']) || '',
       createdAt: serverTimestamp(),
     };
+
+    if (isIdentified && nameVal) {
+      reg.name = nameVal.trim();
+      reg.email = emailVal ? emailVal.trim() : '';
+      reg.phone = phoneVal ? phoneVal.trim() : '';
+    }
+
+    if (rowId) {
+      (reg as any).importedSheetId = rowId;
+    }
+
+    return reg;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -409,15 +703,39 @@ export default function AdminPanel({
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (!text) {
+      const buffer = event.target?.result as ArrayBuffer;
+      if (!buffer || buffer.byteLength === 0) {
         setCsvParseError('O arquivo selecionado está vazio.');
         return;
       }
+
+      let text = '';
       try {
-        const { results } = parseCSV(text);
+        const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
+        text = utf8Decoder.decode(buffer);
+
+        if (text.includes('\uFFFD')) {
+          try {
+            const win1252Decoder = new TextDecoder('windows-1252', { fatal: false });
+            const win1252Text = win1252Decoder.decode(buffer);
+            if (!win1252Text.includes('\uFFFD')) {
+              text = win1252Text;
+            }
+          } catch {
+            // Keep utf8
+          }
+        }
+      } catch (err: any) {
+        setCsvParseError(`Erro ao decodificar arquivo: ${err.message}`);
+        return;
+      }
+
+      text = repairDamagedEncoding(text);
+
+      try {
+        const { results } = parseFullCSV(text);
         if (results.length === 0) {
-          setCsvParseError('Nenhum dado pôde ser extraído deste arquivo CSV.');
+          setCsvParseError('Nenhum registro válido pôde ser extraído deste arquivo.');
           return;
         }
         setCsvParsedRows(results);
@@ -428,7 +746,27 @@ export default function AdminPanel({
     reader.onerror = () => {
       setCsvParseError('Houve um erro físico ao ler o arquivo.');
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleProcessPastedCSV = () => {
+    if (!csvRawPastedText.trim()) {
+      setCsvParseError('Por favor, cole o texto do arquivo CSV na caixa antes de processar.');
+      return;
+    }
+    setCsvParseError(null);
+    try {
+      const repaired = repairDamagedEncoding(csvRawPastedText);
+      const { results } = parseFullCSV(repaired);
+      if (results.length === 0) {
+        setCsvParseError('Nenhum registro pôde ser reconhecido no texto informado.');
+        return;
+      }
+      setCsvParsedRows(results);
+      setCsvFileName('Texto CSV Colado');
+    } catch (err: any) {
+      setCsvParseError(`Erro ao processar CSV colado: ${err.message}`);
+    }
   };
 
   const downloadCSVTemplate = () => {
@@ -449,7 +787,7 @@ export default function AdminPanel({
     const examples = [
       [
         '26/05/2026',
-        '⚠️Relato de Condição Insegura',
+        '⚠️ Condição Insegura',
         'Manutenção Mecânica',
         'Vazamento de óleo na prensa hidráulica gerando piso extremamente escorregadio.',
         'sim',
@@ -462,7 +800,7 @@ export default function AdminPanel({
       ],
       [
         '25/05/2026',
-        '💡Sugestão',
+        '💡 Sugestão',
         'Logística de Celulose',
         'Instalar maior iluminação na área de descarregamento noturno dos caminhões para maior segurança.',
         'não',
@@ -495,6 +833,11 @@ export default function AdminPanel({
 
   const handleCSVImportSubmit = async () => {
     if (csvParsedRows.length === 0) return;
+    if (!isMasterAdmin) {
+      setErrorMsg('Acesso restrito: Apenas o Super Administrador pode realizar importações em massa.');
+      return;
+    }
+
     setIsImporting(true);
     let successCount = 0;
     
@@ -502,13 +845,14 @@ export default function AdminPanel({
       if (isSimulated) {
         const stored = localStorage.getItem('cipa_mock_registrations');
         const list = stored ? JSON.parse(stored) : [];
-        for (const rawRow of csvParsedRows) {
+        for (let i = 0; i < csvParsedRows.length; i++) {
+          const rawRow = csvParsedRows[i];
           const parsedReg = mapParsedRowToRegistration(rawRow);
           const newId = `REG-IMPORT-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
           const newReg: any = {
             ...parsedReg,
             id: newId,
-            createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any,
+            createdAt: { seconds: Math.floor(Date.now() / 1000) - (csvParsedRows.length - i) * 60, nanoseconds: 0 } as any,
           };
           if (parsedReg.adminNotes && parsedReg.adminNotes.trim() !== '') {
             newReg.respondedAt = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 } as any;
@@ -520,45 +864,76 @@ export default function AdminPanel({
         localStorage.setItem('cipa_mock_registrations', JSON.stringify(list));
         setRegistrations(list);
       } else {
-        for (const rawRow of csvParsedRows) {
-          const parsedReg = mapParsedRowToRegistration(rawRow);
-          const payload: any = {
-            ...parsedReg,
-            createdAt: serverTimestamp(),
-          };
-          
-          // Clean up values: if not identified, remove user identity keys entirely
-          if (!payload.isIdentified) {
-            delete payload.name;
-            delete payload.email;
-            delete payload.phone;
-          } else {
-            // Trim values and fall back cleanly
-            if (payload.name) payload.name = payload.name.trim();
-            if (payload.email) payload.email = payload.email.trim();
-            if (payload.phone) payload.phone = payload.phone.trim();
+        const newAreasSet = new Set<string>();
+        const CHUNK_SIZE = 100;
+
+        for (let i = 0; i < csvParsedRows.length; i += CHUNK_SIZE) {
+          const chunk = csvParsedRows.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+
+          for (const rawRow of chunk) {
+            const parsedReg = mapParsedRowToRegistration(rawRow);
+            if (parsedReg.area && parsedReg.area !== 'Outra' && !areasList.includes(parsedReg.area)) {
+              newAreasSet.add(parsedReg.area);
+            }
+
+            const docRef = doc(collection(db, 'registrations'));
+            const payload: any = {
+              ...parsedReg,
+              createdAt: serverTimestamp(),
+            };
+            
+            if (!payload.isIdentified) {
+              delete payload.name;
+              delete payload.email;
+              delete payload.phone;
+            } else {
+              if (payload.name) payload.name = payload.name.trim();
+              if (payload.email) payload.email = payload.email.trim();
+              if (payload.phone) payload.phone = payload.phone.trim();
+            }
+
+            if (!payload.adminNotes || payload.adminNotes.trim() === '') {
+              delete payload.adminNotes;
+              delete payload.respondedAt;
+              delete payload.respondedBy;
+            } else {
+              payload.adminNotes = payload.adminNotes.trim();
+              payload.respondedAt = serverTimestamp();
+              payload.respondedBy = currentUserEmail;
+            }
+
+            batch.set(docRef, payload);
+            successCount++;
           }
 
-          // If there are no admin notes, delete adminNotes key so it matches initial manual registrations
-          if (!payload.adminNotes || payload.adminNotes.trim() === '') {
-            delete payload.adminNotes;
-            delete payload.respondedAt;
-            delete payload.respondedBy;
-          } else {
-            payload.adminNotes = payload.adminNotes.trim();
-            payload.respondedAt = serverTimestamp();
-            payload.respondedBy = currentUserEmail;
-          }
+          await batch.commit();
+        }
 
-          await addDoc(collection(db, 'registrations'), payload);
-          successCount++;
+        // Auto-provision any new areas from spreadsheet
+        if (newAreasSet.size > 0) {
+          for (const newAreaName of newAreasSet) {
+            const areaSlug = newAreaName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+            if (areaSlug) {
+              try {
+                await setDoc(doc(db, 'areas', areaSlug), {
+                  name: newAreaName,
+                  createdAt: serverTimestamp(),
+                  addedBy: currentUserEmail
+                }, { merge: true });
+              } catch (e) {
+                console.warn('Não foi possível auto-cadastrar área detectada:', newAreaName);
+              }
+            }
+          }
         }
       }
       
-      setSuccessMsg(`Importação realizada com sucesso! ${successCount} relatos foram adicionados.`);
-      await logSystemAction('Importação em Lote', `Importou com sucesso ${successCount} relatos (planilha Excel/CSV).`);
+      setSuccessMsg(`Importação concluída com sucesso! ${successCount} relatos foram adicionados ao banco de dados.`);
+      await logSystemAction('Importação em Lote', `O Super Administrador ${currentUserEmail} importou ${successCount} relatos da planilha.`);
       setCsvParsedRows([]);
       setCsvFileName('');
+      setCsvRawPastedText('');
       setCsvParseError(null);
       setShowImportCsvSection(false);
     } catch (err: any) {
@@ -2998,181 +3373,236 @@ export default function AdminPanel({
               </div>
             </div>
 
-            {/* CSV Import Banner/Section */}
-            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 p-5 rounded-3xl shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="space-y-1">
-                  <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                    <FileText className="h-4.5 w-4.5 text-emerald-600 animate-pulse" />
-                    Importação de Relatos por Lote (Planilha Excel/CSV)
-                  </h3>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Importe dezenas de relatos históricos retroativos de uma só vez utilizando nossa planilha modelo de segurança.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                  <button
-                    onClick={downloadCSVTemplate}
-                    className="p-2 px-3.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-705 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer shadow-xs"
-                  >
-                    <Download className="h-3.5 w-3.5 text-emerald-650" />
-                    Baixar Modelo CSV
-                  </button>
-                  <button
-                    onClick={() => setShowImportCsvSection(!showImportCsvSection)}
-                    className={`p-2 px-3.5 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer shadow-xs ${
-                      showImportCsvSection 
-                        ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' 
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    }`}
-                  >
-                    <UploadCloud className="h-3.5 w-3.5" />
-                    {showImportCsvSection ? 'Ocultar Planilha' : 'Importar Planilha'}
-                  </button>
-                </div>
-              </div>
-
-              {showImportCsvSection && (
-                <div className="bg-white border border-emerald-100 p-5 rounded-2xl space-y-4 transition-all animate-fadeIn">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* Drag and Drop Zone */}
-                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-emerald-400 p-6 rounded-2xl transition-all bg-slate-50/50">
-                      <UploadCloud className="h-8 w-8 text-slate-400 mb-2.5" />
-                      <p className="text-xs font-bold text-slate-700 mb-1 leading-normal text-center">
-                        Arraste ou escolha sua planilha CSV aqui
-                      </p>
-                      <p className="text-[10px] text-slate-400 mb-4 text-center leading-normal">
-                        Mapeamento automático de cabeçalhos e suporte a acentos brasileiros (UTF-8).
-                      </p>
-                      <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl transition-all border border-slate-200 select-none shadow-3xs active:scale-95">
-                        Selecionar Arquivo
-                        <input
-                          type="file"
-                          accept=".csv"
-                          className="hidden"
-                          onChange={handleFileChange}
-                        />
-                      </label>
-                      {csvFileName && (
-                        <p className="mt-2.5 font-mono text-[10px] font-bold text-emerald-650 bg-emerald-50 px-2 py-0.5 rounded-md text-center">
-                          📄 {csvFileName}
-                        </p>
-                      )}
+            {/* CSV Import Banner/Section - Exclusivo Super Admin */}
+            {isMasterAdmin && (
+              <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300/80 p-5 rounded-3xl shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                        <FileText className="h-4.5 w-4.5 text-emerald-600 animate-pulse" />
+                        Importação de Relatos por Lote (Excel / Forms / CSV)
+                      </h3>
+                      <span className="bg-emerald-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
+                        Master Admin Exclusivo
+                      </span>
                     </div>
-
-                    {/* Mapping specs guidance */}
-                    <div className="space-y-2.5 text-xs text-slate-505 leading-relaxed bg-slate-50/30 p-4 rounded-xl border border-slate-100">
-                      <p className="font-bold text-slate-700">Colunas identificadas automaticamente:</p>
-                      <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-500 font-mono">
-                        <li><strong>data_observacao:</strong> ex: 26/05/2026</li>
-                        <li><strong>categoria:</strong> ex: Sugestão, Condição Insegura, etc.</li>
-                        <li><strong>area:</strong> setor correspondente cadastrado</li>
-                        <li><strong>informacao:</strong> o relato detalhado</li>
-                        <li><strong>identificado:</strong> sim ou nao</li>
-                        <li><strong>nome, email, telefone:</strong> dados se identificado</li>
-                        <li><strong>compartilhar_dados:</strong> sim ou nao</li>
-                        <li><strong>status:</strong> pendente, em_analise, resolvido</li>
-                        <li><strong>parecer_cipa:</strong> resposta oficial (opcional)</li>
-                      </ul>
-                      <p className="text-[10px] text-amber-700 italic font-sans leading-normal">
-                        * Dica: Baixe nossa planilha modelo de importação para ter certeza que todas as colunas estão idênticas!
-                      </p>
-                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Importe dezenas de relatos históricos retroativos de uma só vez do Microsoft Forms ou Excel com suporte automático a quebras de linha e correção de acentuação.
+                    </p>
                   </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button
+                      onClick={downloadCSVTemplate}
+                      className="p-2 px-3.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer shadow-xs"
+                    >
+                      <Download className="h-3.5 w-3.5 text-emerald-600" />
+                      Baixar Modelo CSV
+                    </button>
+                    <button
+                      onClick={() => setShowImportCsvSection(!showImportCsvSection)}
+                      className={`p-2 px-3.5 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer shadow-xs ${
+                        showImportCsvSection 
+                          ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' 
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      <UploadCloud className="h-3.5 w-3.5" />
+                      {showImportCsvSection ? 'Ocultar Importador' : 'Abrir Importador'}
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Parse error display */}
-                  {csvParseError && (
-                    <div className="bg-red-50 border border-red-200 text-red-905 p-3.5 rounded-2xl text-xs flex items-center gap-2">
-                      <AlertCircle className="h-4.5 w-4.5 text-red-650 shrink-0" />
-                      <p className="font-semibold">{csvParseError}</p>
+                {showImportCsvSection && (
+                  <div className="bg-white border border-emerald-200 p-5 rounded-2xl space-y-4 transition-all animate-fadeIn">
+                    {/* Method Selector Tabs */}
+                    <div className="flex gap-2 border-b border-slate-100 pb-3">
+                      <button
+                        type="button"
+                        onClick={() => setCsvInputMethod('file')}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                          csvInputMethod === 'file'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <UploadCloud className="h-3.5 w-3.5" />
+                        <span>Selecionar Arquivo CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCsvInputMethod('paste')}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                          csvInputMethod === 'paste'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        <span>Colar Texto do CSV Diretamente</span>
+                      </button>
                     </div>
-                  )}
 
-                  {/* Preview list of Parsed Records */}
-                  {csvParsedRows.length > 0 && (
-                    <div className="space-y-3.5 border-t border-slate-100 pt-4">
-                      <div className="flex justify-between items-center bg-slate-50/50 p-2.5 rounded-xl">
-                        <span className="text-xs font-bold text-slate-700">
-                          {csvParsedRows.length} relatos carregados
-                        </span>
-                        <div className="flex gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {csvInputMethod === 'file' ? (
+                        /* Drag and Drop Zone */
+                        <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-emerald-400 p-6 rounded-2xl transition-all bg-slate-50/50">
+                          <UploadCloud className="h-8 w-8 text-slate-400 mb-2.5" />
+                          <p className="text-xs font-bold text-slate-700 mb-1 leading-normal text-center">
+                            Arraste ou escolha sua planilha CSV aqui
+                          </p>
+                          <p className="text-[10px] text-slate-400 mb-4 text-center leading-normal">
+                            Compatível com exports do Microsoft Forms, SharePoint e Excel (ponto e vírgula ou vírgula).
+                          </p>
+                          <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl transition-all border border-slate-200 select-none shadow-3xs active:scale-95">
+                            Selecionar Arquivo
+                            <input
+                              type="file"
+                              accept=".csv,text/csv,text/plain"
+                              className="hidden"
+                              onChange={handleFileChange}
+                            />
+                          </label>
+                          {csvFileName && (
+                            <p className="mt-2.5 font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-center">
+                              📄 {csvFileName}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        /* Direct Paste Zone */
+                        <div className="flex flex-col gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                          <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                            <span>Cole aqui o conteúdo do seu CSV:</span>
+                            <span className="text-[10px] text-slate-400 font-normal">Ex: cabeçalho + linhas separadas por ;</span>
+                          </label>
+                          <textarea
+                            rows={6}
+                            value={csvRawPastedText}
+                            onChange={(e) => setCsvRawPastedText(e.target.value)}
+                            placeholder="ID;Hora de início;Hora de conclusão;Email;Nome...&#10;23;2/21/26 11:23:57;...;Secagem e Enfardamento;Elogio..."
+                            className="w-full text-xs font-mono p-2.5 bg-white border border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none resize-none text-slate-800"
+                          />
                           <button
-                            onClick={() => {
-                              setCsvParsedRows([]);
-                              setCsvFileName('');
-                              setCsvParseError(null);
-                            }}
-                            className="bg-transparent hover:bg-slate-100 text-slate-500 text-[10px] font-bold px-2.5 py-1.5 rounded-lg active:scale-95 cursor-pointer uppercase select-none"
+                            type="button"
+                            onClick={handleProcessPastedCSV}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition-all cursor-pointer self-end"
                           >
-                            Limpar
-                          </button>
-                          <button
-                            onClick={handleCSVImportSubmit}
-                            disabled={isImporting}
-                            className="bg-emerald-650 hover:bg-emerald-700 text-white text-[10px] font-bold px-4 py-1.5 rounded-lg inline-flex items-center gap-1 active:scale-95 cursor-pointer uppercase select-none disabled:opacity-50"
-                          >
-                            {isImporting ? (
-                              <>
-                                <RefreshCw className="h-3 w-3 animate-spin" />
-                                Salvando...
-                              </>
-                            ) : (
-                              <>
-                                <Check className="h-3 w-3" />
-                                Gravar no Banco de Dados
-                              </>
-                            )}
+                            Processar Texto Colado
                           </button>
                         </div>
-                      </div>
+                      )}
 
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl max-h-48 overflow-y-auto">
-                        <table className="w-full text-left border-collapse text-[10px]">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-secondary/15 font-bold text-slate-500 font-mono">
-                              <th className="p-2">Data</th>
-                              <th className="p-2">Categoria</th>
-                              <th className="p-2">Área (Setor)</th>
-                              <th className="p-2">Relato / Descrição</th>
-                              <th className="p-2">Identificado</th>
-                              <th className="p-2">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {csvParsedRows.slice(0, 5).map((row, idx) => {
-                              const r = mapParsedRowToRegistration(row);
-                              return (
-                                <tr key={idx} className="border-b border-slate-50 text-slate-600 hover:bg-slate-50/35">
-                                  <td className="p-2 font-mono whitespace-nowrap">{r.dateObservation}</td>
-                                  <td className="p-2 whitespace-nowrap font-medium">{r.category}</td>
-                                  <td className="p-2 whitespace-nowrap">{r.area}</td>
-                                  <td className="p-2 truncate max-w-xs font-sans">{r.info}</td>
-                                  <td className="p-2 font-mono whitespace-nowrap">{r.isIdentified ? `Sim (${r.name?.substring(0, 15)}...)` : 'Não (Anônimo)'}</td>
-                                  <td className="p-2 whitespace-nowrap">
-                                    <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] uppercase tracking-wide font-mono ${
-                                      r.status === 'pendente' ? 'bg-yellow-50 text-yellow-700' :
-                                      r.status === 'em_analise' ? 'bg-sky-50 text-sky-700' :
-                                      r.status === 'resolvido' ? 'bg-emerald-50 text-emerald-705' : 'bg-slate-50 text-slate-700'
-                                    }`}>
-                                      {r.status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        {csvParsedRows.length > 5 && (
-                          <div className="bg-slate-50 text-slate-450 p-2 text-center text-[9px] font-mono font-medium border-t border-slate-100">
-                            E mais {csvParsedRows.length - 5} linhas carregadas nesta planilha...
-                          </div>
-                        )}
+                      {/* Mapping specs guidance */}
+                      <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed bg-slate-50/50 p-4 rounded-xl border border-slate-200">
+                        <p className="font-bold text-slate-800">Mapeamento Inteligente Eldorado/MS Forms:</p>
+                        <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600 font-sans">
+                          <li><strong>ID / Sequence:</strong> Detecta coluna ID (#23, #24, #25, etc.)</li>
+                          <li><strong>Data:</strong> Lê de "Data da Observação" ou da "Hora de início"</li>
+                          <li><strong>Categoria:</strong> Elogio, Condição Insegura, Sugestão, Dúvida ou Reclamação</li>
+                          <li><strong>Setor / Área:</strong> Normaliza nomes e cadastra novas áreas automaticamente</li>
+                          <li><strong>Anonimato:</strong> Se "Deseja se Identificar? = NÃO", oculta dados pessoais</li>
+                          <li><strong>Correção Textual:</strong> Corrige falhas de acentos (ex: NO ➔ NÃO, Gerncia ➔ Gerência)</li>
+                        </ul>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+
+                    {/* Parse error display */}
+                    {csvParseError && (
+                      <div className="bg-red-50 border border-red-200 text-red-900 p-3.5 rounded-2xl text-xs flex items-center gap-2">
+                        <AlertCircle className="h-4.5 w-4.5 text-red-600 shrink-0" />
+                        <p className="font-semibold">{csvParseError}</p>
+                      </div>
+                    )}
+
+                    {/* Preview list of Parsed Records */}
+                    {csvParsedRows.length > 0 && (
+                      <div className="space-y-3.5 border-t border-slate-100 pt-4">
+                        <div className="flex justify-between items-center bg-emerald-50/60 border border-emerald-200 p-3 rounded-xl flex-wrap gap-2">
+                          <span className="text-xs font-extrabold text-emerald-900">
+                            ✅ {csvParsedRows.length} relatos identificados e prontos para gravação
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setCsvParsedRows([]);
+                                setCsvFileName('');
+                                setCsvRawPastedText('');
+                                setCsvParseError(null);
+                              }}
+                              className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold px-3 py-1.5 rounded-xl active:scale-95 cursor-pointer"
+                            >
+                              Limpar
+                            </button>
+                            <button
+                              onClick={handleCSVImportSubmit}
+                              disabled={isImporting}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-4 py-1.5 rounded-xl inline-flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-sm disabled:opacity-50"
+                            >
+                              {isImporting ? (
+                                <>
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                  <span>Gravando em Lotes...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="h-3.5 w-3.5" />
+                                  <span>Gravar Todos no Banco</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl max-h-60 overflow-y-auto">
+                          <table className="w-full text-left border-collapse text-[11px]">
+                            <thead>
+                              <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700 font-mono">
+                                <th className="p-2">ID</th>
+                                <th className="p-2">Data</th>
+                                <th className="p-2">Categoria</th>
+                                <th className="p-2">Área (Setor)</th>
+                                <th className="p-2">Relato / Descrição</th>
+                                <th className="p-2">Identificado</th>
+                                <th className="p-2">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {csvParsedRows.map((row, idx) => {
+                                const r = mapParsedRowToRegistration(row);
+                                return (
+                                  <tr key={idx} className="border-b border-slate-100 text-slate-700 hover:bg-slate-50">
+                                    <td className="p-2 font-mono font-bold text-emerald-800">
+                                      #{row.id || (row as any)._originalIndex || idx + 1}
+                                    </td>
+                                    <td className="p-2 font-mono whitespace-nowrap">{r.dateObservation}</td>
+                                    <td className="p-2 whitespace-nowrap font-semibold">{r.category}</td>
+                                    <td className="p-2 whitespace-nowrap font-medium text-slate-900">{r.area}</td>
+                                    <td className="p-2 max-w-sm truncate font-sans" title={r.info}>{r.info}</td>
+                                    <td className="p-2 font-mono whitespace-nowrap">
+                                      {r.isIdentified ? (
+                                        <span className="text-emerald-700 font-bold">Sim ({r.name || 'Nome'})</span>
+                                      ) : (
+                                        <span className="text-slate-400">Anônimo</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 whitespace-nowrap">
+                                      <span className="px-2 py-0.5 rounded-full font-bold text-[10px] uppercase font-mono bg-yellow-50 text-yellow-800 border border-yellow-200">
+                                        {r.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Filter controls row */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-center">
@@ -3201,15 +3631,32 @@ export default function AdminPanel({
                 ))}
               </div>
 
-              {/* In-app Text Search and PDF Export Button */}
+              {/* In-app Text Search, Delete All, and PDF Export Button */}
               <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
                 <input
                   type="text"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   placeholder="Pesquisar relato por termo..."
-                  className="bg-slate-50 border border-slate-200 text-xs px-4 py-2 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 flex-1 lg:min-w-[220px]"
+                  className="bg-slate-50 border border-slate-200 text-xs px-4 py-2 rounded-xl text-slate-800 focus:outline-none focus:border-emerald-500 flex-1 lg:min-w-[200px]"
                 />
+
+                {/* Exclusivo Master Admin: Apagar todos os relatados de uma só vez */}
+                {isMasterAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteAllConfirmInput('');
+                      setShowDeleteAllModal(true);
+                    }}
+                    disabled={isDeletingAll || registrations.length === 0}
+                    className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-40 shrink-0"
+                    title="Exclusivo Master Admin: Apagar todos os relatos do sistema de uma só vez"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                    <span>Apagar Todos ({registrations.length})</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -4332,6 +4779,95 @@ export default function AdminPanel({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal de Exclusão Total - Exclusivo para Master Admin */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border-2 border-red-200 text-slate-800 relative">
+            <button
+              onClick={() => {
+                if (!isDeletingAll) {
+                  setShowDeleteAllModal(false);
+                  setDeleteAllConfirmInput('');
+                }
+              }}
+              disabled={isDeletingAll}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3.5 mb-4">
+              <div className="p-3 bg-red-100 text-red-600 rounded-2xl shrink-0">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 leading-snug">
+                  Apagar Todos os Relatos
+                </h3>
+                <p className="text-xs text-red-600 font-bold uppercase tracking-wider">
+                  Ação Irreversível • Exclusivo Master Admin
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 bg-red-50/70 border border-red-200 p-4 rounded-2xl text-xs text-slate-700 leading-relaxed mb-5">
+              <p className="font-bold text-red-900">
+                Você está prestes a excluir PERMANENTEMENTE todos os {registrations.length} relatos registrados no sistema.
+              </p>
+              <p className="text-slate-600">
+                Isso apagará todos os chamados, históricos, status, pareceres e dados associados da base de dados do Firestore. Essa ação <strong>NÃO</strong> poderá ser desfeita.
+              </p>
+              <div className="pt-2 border-t border-red-200/60">
+                <label className="block font-bold text-slate-800 mb-1.5">
+                  Para autorizar a exclusão em massa, digite exatamente <span className="bg-red-200 text-red-900 px-1.5 py-0.5 rounded font-mono font-black">EXCLUIR TUDO</span> abaixo:
+                </label>
+                <input
+                  type="text"
+                  value={deleteAllConfirmInput}
+                  onChange={(e) => setDeleteAllConfirmInput(e.target.value)}
+                  disabled={isDeletingAll}
+                  placeholder="Digite EXCLUIR TUDO"
+                  className="w-full bg-white border-2 border-red-300 focus:border-red-600 text-slate-900 font-bold px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all placeholder:text-slate-400 font-mono"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteAllModal(false);
+                  setDeleteAllConfirmInput('');
+                }}
+                disabled={isDeletingAll}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllRegistrations}
+                disabled={deleteAllConfirmInput.trim() !== 'EXCLUIR TUDO' || isDeletingAll}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-md shadow-red-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isDeletingAll ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Excluindo relatos...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Confirmar Exclusão Total</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Admin Photo Zoom Modal */}
       {adminPhotoZoom && (
