@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, ClipboardList, Shield, ShieldAlert, 
@@ -6,7 +6,7 @@ import {
   MessageSquare, UserPlus, Filter, FileText, Calendar, Tag, MapPin, 
   Download, BarChart2, CheckCircle2, Clock, Plus, Edit3, Activity,
   Palette, UploadCloud, RotateCcw, ExternalLink, Camera, ZoomIn, X, Flame,
-  Printer
+  Printer, Bell, BellRing, BellOff, Volume2, VolumeX, Radio
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
@@ -17,6 +17,12 @@ import { db, handleFirestoreError } from '../firebase';
 import { Registration, DbAdmin, OperationType, SystemLog } from '../types';
 import { AREAS_LIST } from '../areas';
 import CipaLogo from './CipaLogo';
+import { 
+  requestFCMNotificationPermission, 
+  playNotificationChime, 
+  triggerSystemNotification, 
+  listenToForegroundMessages 
+} from '../services/fcmService';
 
 interface AdminPanelProps {
   currentUserEmail: string;
@@ -84,6 +90,109 @@ export default function AdminPanel({
   // Errors / Success Messages
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Push Notifications (Firebase Cloud Messaging) & Real-Time Alerts
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    return typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
+  });
+  const [isActivatingPush, setIsActivatingPush] = useState<boolean>(false);
+  const [soundAlertsEnabled, setSoundAlertsEnabled] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? localStorage.getItem('cipa_sound_alerts') !== 'false' : true;
+  });
+  const [newTicketToast, setNewTicketToast] = useState<{
+    id: string;
+    category: string;
+    area: string;
+    urgency: string;
+    info: string;
+  } | null>(null);
+  const isInitialSnapshotRef = useRef<boolean>(true);
+  const knownTicketIdsRef = useRef<Set<string>>(new Set());
+
+  // Auto-dismiss new ticket toast after 14 seconds
+  useEffect(() => {
+    if (newTicketToast) {
+      const timer = setTimeout(() => {
+        setNewTicketToast(null);
+      }, 14000);
+      return () => clearTimeout(timer);
+    }
+  }, [newTicketToast]);
+
+  // Listen to FCM foreground messages
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    listenToForegroundMessages((payload) => {
+      if (soundAlertsEnabled) {
+        playNotificationChime();
+      }
+      if (payload.title || payload.body) {
+        setNewTicketToast({
+          id: payload.data?.id || 'NOVO',
+          category: payload.data?.category || 'Manifestação CIPA',
+          area: payload.data?.area || 'Setor Não Informado',
+          urgency: payload.data?.urgency || 'alta',
+          info: payload.body || 'Novo registro submetido no SAC CIPA',
+        });
+      }
+    }).then(unsub => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [soundAlertsEnabled]);
+
+  const handleTogglePushNotifications = async () => {
+    setIsActivatingPush(true);
+    try {
+      const result = await requestFCMNotificationPermission(currentUserEmail);
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setNotificationPermission(Notification.permission);
+      }
+      if (result.granted) {
+        setSuccessMsg('Notificações Push (Firebase Cloud Messaging) ativadas com sucesso!');
+        await logSystemAction('Notificações Push', 'Ativou alertas em tempo real e push FCM para novos chamados.');
+        if (soundAlertsEnabled) {
+          playNotificationChime();
+        }
+        await triggerSystemNotification(
+          '🔔 Notificações SAC CIPA Ativadas',
+          'Você receberá alertas em tempo real e avisos sonoros neste dispositivo sempre que um novo chamado for registrado.',
+          'cipa-test-welcome'
+        );
+      } else {
+        setErrorMsg(result.error || 'Permissão de notificações não concedida no navegador.');
+      }
+    } catch (e: any) {
+      setErrorMsg(`Erro ao configurar notificações: ${e.message}`);
+    } finally {
+      setIsActivatingPush(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (soundAlertsEnabled) {
+      playNotificationChime();
+    }
+    const testId = `TEST-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const success = await triggerSystemNotification(
+      '🚨 Teste de Alerta SAC CIPA',
+      'Este é um exemplo de notificação push em tempo real de um novo registro recebido.',
+      'cipa-test-alert'
+    );
+    setNewTicketToast({
+      id: testId,
+      category: '💡 Sugestão de Melhoria (Teste)',
+      area: 'Operação Central',
+      urgency: 'alta',
+      info: 'Notificação de teste executada com sucesso para verificação de som e push.',
+    });
+    if (!success && notificationPermission !== 'granted') {
+      setErrorMsg('As notificações estão bloqueadas no navegador. Clique no ícone de permissões ao lado da barra de endereços para permitir notificações.');
+    }
+  };
 
   // Custom Confirmation Dialog state
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -612,6 +721,53 @@ export default function AdminPanel({
       snapshot.forEach((doc) => {
         items.push({ id: doc.id, ...doc.data() } as Registration);
       });
+
+      // Real-time detection of newly submitted tickets from form
+      if (!isInitialSnapshotRef.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const newDoc = change.doc;
+            const newId = newDoc.id;
+            if (!knownTicketIdsRef.current.has(newId)) {
+              knownTicketIdsRef.current.add(newId);
+              const data = newDoc.data() as Registration;
+
+              // Play audio alert if enabled
+              if (soundAlertsEnabled) {
+                playNotificationChime();
+              }
+
+              // Fire system push notification (Desktop, Android, PWA)
+              const urgencyLabel = (data.urgency || 'MÉDIA').toUpperCase();
+              const areaName = data.area || 'Setor Não Informado';
+              const catName = data.category || 'Manifestação';
+              const notifTitle = `🚨 Novo Relato CIPA [${urgencyLabel}]`;
+              const notifBody = `${catName} no setor ${areaName}:\n${(data.info || '').slice(0, 100)}`;
+
+              triggerSystemNotification(notifTitle, notifBody, `cipa-${newId}`, {
+                id: newId,
+                url: typeof window !== 'undefined' ? window.location.href : '/',
+              });
+
+              // Display prominent floating real-time in-app alert toast
+              setNewTicketToast({
+                id: newId,
+                category: catName,
+                area: areaName,
+                urgency: data.urgency || 'media',
+                info: data.info || '',
+              });
+            }
+          }
+        });
+      } else {
+        // Record all baseline IDs so existing tickets do not trigger alerts on first load
+        items.forEach(item => {
+          if (item.id) knownTicketIdsRef.current.add(item.id);
+        });
+        isInitialSnapshotRef.current = false;
+      }
+
       setRegistrations(items);
       setLoadingRegistrations(false);
     }, (err) => {
@@ -2179,7 +2335,77 @@ export default function AdminPanel({
   };
 
   return (
-    <div id="admin-panel" className="w-full space-y-6 font-sans">
+    <div id="admin-panel" className="w-full space-y-6 font-sans relative">
+      {/* Floating Real-Time New Ticket Toast Alert */}
+      <AnimatePresence>
+        {newTicketToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -25, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-20 right-4 sm:right-6 z-50 max-w-sm w-full bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border-2 border-emerald-500 flex flex-col gap-2.5 animate-in"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-xs tracking-wider uppercase">
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span>🚨 Novo Relato Recebido</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewTicketToast(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Fechar alerta"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="text-xs space-y-1">
+              <div className="font-bold text-white text-sm line-clamp-1">
+                {newTicketToast.category}
+              </div>
+              <div className="text-slate-300 text-xs">
+                Setor: <strong className="text-emerald-300 font-semibold">{newTicketToast.area}</strong> • Urgência: <strong className="text-amber-300 font-semibold uppercase">{newTicketToast.urgency}</strong>
+              </div>
+              <p className="text-slate-400 text-xs line-clamp-2 italic">
+                "{newTicketToast.info}"
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('registros');
+                  const reg = registrations.find(r => r.id === newTicketToast.id);
+                  if (reg) {
+                    setSelectedReg(reg);
+                    setAdminNotesText(reg.adminNotes || '');
+                  } else {
+                    setSearchText(newTicketToast.id);
+                  }
+                  setNewTicketToast(null);
+                }}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>Visualizar Chamado</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewTicketToast(null)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-3 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Dispensar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="print:hidden space-y-6">
         {/* Upper info row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
@@ -2254,6 +2480,88 @@ export default function AdminPanel({
             <Palette className="h-3.5 w-3.5" />
             <span>Visual & Logo</span>
           </button>
+        </div>
+      </div>
+
+      {/* Push Notifications & Real-Time Alert Status Bar */}
+      <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-900 text-white p-4 rounded-3xl shadow-sm border border-emerald-800/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className={`p-3 rounded-2xl shrink-0 ${notificationPermission === 'granted' ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30' : 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30'}`}>
+            {notificationPermission === 'granted' ? (
+              <BellRing className="h-5 w-5 animate-pulse text-emerald-400" />
+            ) : (
+              <BellOff className="h-5 w-5 text-amber-400" />
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-extrabold text-slate-100">
+                {notificationPermission === 'granted'
+                  ? 'Alertas Push em Tempo Real (FCM) Ativos'
+                  : 'Notificações Push Desativadas no Navegador'}
+              </span>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                notificationPermission === 'granted' ? 'bg-emerald-400/20 text-emerald-200' : 'bg-amber-400/20 text-amber-200'
+              }`}>
+                {notificationPermission === 'granted' ? '🟢 Conectado ao FCM' : '🟡 Inativo'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+              {notificationPermission === 'granted'
+                ? 'Você receberá avisos sonoros e notificações instantâneas no desktop ou celular sempre que um novo relato for submetido.'
+                : 'Ative as notificações para ser alertado instantaneamente quando um colaborador registrar uma ocorrência.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center flex-wrap gap-2 w-full md:w-auto justify-end shrink-0">
+          {/* Audio Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              const newVal = !soundAlertsEnabled;
+              setSoundAlertsEnabled(newVal);
+              localStorage.setItem('cipa_sound_alerts', String(newVal));
+              if (newVal) playNotificationChime();
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+              soundAlertsEnabled
+                ? 'bg-slate-800/90 text-emerald-300 border-emerald-600/40 hover:bg-slate-800'
+                : 'bg-slate-800/40 text-slate-400 border-slate-700 hover:text-slate-200'
+            }`}
+            title="Ativar/desativar efeito sonoro para novos chamados"
+          >
+            {soundAlertsEnabled ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5" />}
+            <span>{soundAlertsEnabled ? 'Som: Ligado' : 'Som: Mudo'}</span>
+          </button>
+
+          {/* Test Notification Button */}
+          <button
+            type="button"
+            onClick={handleTestNotification}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer active:scale-95"
+            title="Disparar som e notificação push de teste"
+          >
+            <Radio className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Testar Alerta</span>
+          </button>
+
+          {/* Activate / Permission Button */}
+          {notificationPermission !== 'granted' && (
+            <button
+              type="button"
+              disabled={isActivatingPush}
+              onClick={handleTogglePushNotifications}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              {isActivatingPush ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Bell className="h-3.5 w-3.5" />
+              )}
+              <span>Ativar Notificações Push</span>
+            </button>
+          )}
         </div>
       </div>
 

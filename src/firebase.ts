@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { OperationType, FirestoreErrorInfo } from './types';
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // CRITICAL: The app will break without this line
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);

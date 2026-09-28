@@ -20,7 +20,11 @@ export default defineConfig(() => {
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
-          'logo/logo_cipa.png'
+          'logo/logo_cipa.png',
+          'logo/pwa-192x192.png',
+          'logo/pwa-512x512.png',
+          'logo/pwa-maskable-512x512.png',
+          'logo/apple-touch-icon.png'
         ],
         manifest: {
           id: '/',
@@ -35,25 +39,37 @@ export default defineConfig(() => {
           scope: '/',
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/logo/logo_cipa.png',
+              sizes: '192x192 512x512 1181x1885',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/logo/logo_cipa.png',
+              sizes: '192x192 512x512 1181x1885',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/logo/pwa-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/logo/pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/logo/pwa-maskable-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable'
             },
             {
-              src: '/apple-touch-icon.png',
+              src: '/logo/apple-touch-icon.png',
               sizes: '180x180',
               type: 'image/png',
               purpose: 'any'

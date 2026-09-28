@@ -53,7 +53,7 @@ export const PWAInstallButton: React.FC = () => {
             {/* App Header & Official Logo */}
             <div className="flex items-center gap-3.5 mb-5">
               <img
-                src="/apple-touch-icon.png"
+                src="/logo/logo_cipa.png"
                 alt="Logo SAC CIPA"
                 className="w-14 h-14 rounded-xl border border-slate-200 shadow-sm object-contain p-1 bg-white"
               />

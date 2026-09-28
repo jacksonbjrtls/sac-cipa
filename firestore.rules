@@ -123,5 +123,9 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin() && isValidId(logId) && isValidLog(incoming());
     }
+
+    match /fcm_tokens/{tokenId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

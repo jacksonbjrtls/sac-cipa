@@ -56,6 +56,19 @@
         "timestamp": { "type": "string", "format": "date-time", "description": "When the action was performed" }
       },
       "required": ["email", "action", "description", "timestamp"]
+    },
+    "FcmToken": {
+      "title": "FcmToken",
+      "description": "FCM device push notification tokens for admin alerts",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string", "description": "Device FCM registration token" },
+        "email": { "type": "string", "description": "Admin email associated with this registration" },
+        "deviceInfo": { "type": "string", "description": "Client user agent or platform" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the token was initially registered" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the token was last refreshed" }
+      },
+      "required": ["token", "email", "updatedAt"]
     }
   },
   "firestore": {
@@ -74,6 +87,10 @@
     "system_logs/{logId}": {
       "schema": "SystemLog",
       "description": "System audit and operation logs for safety verification"
+    },
+    "fcm_tokens/{tokenId}": {
+      "schema": "FcmToken",
+      "description": "FCM push notification tokens for admin real-time alerts"
     }
   }
 }
