@@ -18,6 +18,7 @@ import { db, handleFirestoreError } from '../firebase';
 import { Registration, DbAdmin, OperationType, SystemLog } from '../types';
 import { AREAS_LIST } from '../areas';
 import CipaLogo from './CipaLogo';
+import CategoryBarChart, { normalizeCategoryKey, CATEGORY_DEFINITIONS } from './CategoryBarChart';
 import { 
   requestFCMNotificationPermission, 
   playNotificationChime, 
@@ -3080,69 +3081,13 @@ export default function AdminPanel({
             {/* Visual Bento Dashboard Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
-              {/* Bento 1: Category Distribution */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4 lg:col-span-2 text-left">
-                <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                  <div className="space-y-0.5">
-                    <h4 className="font-sans font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                      <BarChart2 className="h-4 w-4 text-emerald-600" />
-                      <span>Relação de Risco por Categoria</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-400">Clique em qualquer barra para analisar os relatos correspondentes.</p>
-                  </div>
-                  <span className="bg-slate-50 px-2.5 py-1 border border-slate-200 rounded-lg text-[9px] font-bold font-mono text-slate-500 uppercase">
-                    Filtro por Risco
-                  </span>
-                </div>
-
-                {categoriesStats.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-xs text-center border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/20">
-                    <AlertCircle className="h-8 w-8 text-slate-300 mb-2" />
-                    <span>Nenhum relato recebido para computar no período selecionado.</span>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {categoriesStats.map((cat, idx) => {
-                      const percentage = Math.round((cat.count / dbTotal) * 100);
-                      const barWidth = Math.max(8, Math.round((cat.count / maxCategoryCount) * 100));
-                      const isSelected = selectedDashboardCategory === cat.name;
-
-                      return (
-                        <div
-                          key={cat.name}
-                          onClick={() => setSelectedDashboardCategory(isSelected ? null : cat.name)}
-                          className={`group p-3 rounded-2xl border cursor-pointer transition-all ${
-                            isSelected 
-                              ? 'border-emerald-500 bg-emerald-50/20 shadow-xs' 
-                              : 'border-transparent hover:border-slate-200 hover:bg-slate-50/50'
-                          }`}
-                        >
-                          <div className="flex justify-between items-center text-xs pb-1.5">
-                            <span className="font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
-                              <span className="w-5 h-5 flex items-center justify-center rounded-lg bg-slate-150 text-[10px] text-slate-500 font-bold group-hover:bg-emerald-100 group-hover:text-emerald-700 font-mono transition-colors">
-                                {idx + 1}
-                              </span>
-                              {cat.name}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-slate-800 font-extrabold">{cat.count}</span>
-                              <span className="text-slate-400 font-mono text-[10px]">({percentage}%)</span>
-                            </div>
-                          </div>
-
-                          <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                isSelected ? 'bg-emerald-600' : 'bg-emerald-700'
-                              }`} 
-                              style={{ width: `${barWidth}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+              {/* Bento 1: Category Distribution with Recharts */}
+              <div className="lg:col-span-2">
+                <CategoryBarChart
+                  registrations={dashboardFilteredRegs}
+                  selectedCategory={selectedDashboardCategory}
+                  onSelectCategory={setSelectedDashboardCategory}
+                />
               </div>
 
               {/* Bento 2: Hot Sectors and Performance Metrics */}
@@ -3227,18 +3172,24 @@ export default function AdminPanel({
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-emerald-50/5 border border-emerald-250 rounded-3xl p-6 shadow-sm space-y-4"
+                className="bg-emerald-50/10 border border-emerald-200 rounded-3xl p-6 shadow-sm space-y-4"
               >
-                <div className="flex justify-between items-center pb-3 border-b border-emerald-150">
+                <div className="flex justify-between items-center pb-3 border-b border-emerald-200/60">
                   <div className="space-y-0.5 text-left">
-                    <h4 className="font-sans font-bold text-slate-800 text-sm">
-                      Relatos na Categoria: <span className="font-black text-emerald-800 underline">{selectedDashboardCategory}</span>
+                    <h4 className="font-sans font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-emerald-600" />
+                      <span>
+                        Relatos na Categoria:{' '}
+                        <span className="font-black text-emerald-800 underline">
+                          {CATEGORY_DEFINITIONS.find(c => c.key === selectedDashboardCategory)?.label || selectedDashboardCategory}
+                        </span>
+                      </span>
                     </h4>
-                    <p className="text-[11px] text-emerald-600/80">Listando relatos filtrados por relevância de risco.</p>
+                    <p className="text-[11px] text-emerald-700/80">Listando chamados filtrados a partir da seleção no gráfico do Recharts.</p>
                   </div>
                   <button
                     onClick={() => setSelectedDashboardCategory(null)}
-                    className="text-xs font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
+                    className="text-xs font-bold text-emerald-800 hover:text-emerald-950 cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-3xs transition-all active:scale-95"
                   >
                     Fechar Filtro ✕
                   </button>
@@ -3246,7 +3197,7 @@ export default function AdminPanel({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {dashboardFilteredRegs
-                    .filter(r => r.category === selectedDashboardCategory)
+                    .filter(r => normalizeCategoryKey(r.category) === selectedDashboardCategory || r.category === selectedDashboardCategory)
                     .map(reg => (
                       <div key={reg.id} className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-xs space-y-3 text-left">
                         <div className="flex justify-between items-center">
