@@ -203,25 +203,38 @@ export default function FormWizard({ onSuccess }: FormWizardProps) {
     setFormData(prev => ({ ...prev, dateObservation: formatted }));
   };
 
-  // Auto-format Brazilian phone format dynamic mask (XX) XXXXX-XXXX or (XX) XXXX-XXXX
+  // Auto-format Brazilian phone format dynamic mask: (XX) XXXXX-XXXX (celular) ou (XX) XXXX-XXXX (fixo)
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 11) value = value.slice(0, 11);
+    const raw = e.target.value;
+
+    // Permitir contatos textuais como "Teams" ou "Ramal ..." se o usuário iniciar com letras
+    if (/^[a-zA-ZÀ-ÿ]/.test(raw.trim())) {
+      setFormData(prev => ({ ...prev, phone: raw }));
+      return;
+    }
+
+    let digits = raw.replace(/\D/g, '');
+    // Se colou número com código do país Brasil (+55)
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+      digits = digits.slice(2);
+    }
+    if (digits.length > 11) digits = digits.slice(0, 11);
 
     let formatted = '';
-    if (value.length > 0) {
-      formatted += `(${value.slice(0, 2)}`;
+    if (digits.length === 0) {
+      formatted = '';
+    } else if (digits.length <= 2) {
+      formatted = `(${digits}`;
+    } else if (digits.length <= 6) {
+      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    } else if (digits.length <= 10) {
+      // Telefone fixo (10 dígitos): (XX) XXXX-XXXX
+      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    } else {
+      // Celular (11 dígitos): (XX) XXXXX-XXXX
+      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
     }
-    if (value.length > 2) {
-      formatted += `) ${value.slice(2, 7)}`;
-    }
-    if (value.length > 7) {
-      if (value.length > 10) {
-        formatted += `(${value.slice(0, 2)}) ${value.slice(2, 7)}-${value.slice(7, 11)}`;
-      } else {
-        formatted += `(${value.slice(0, 2)}) ${value.slice(2, 6)}-${value.slice(6, 10)}`;
-      }
-    }
+
     setFormData(prev => ({ ...prev, phone: formatted }));
   };
 

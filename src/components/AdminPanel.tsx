@@ -3886,7 +3886,22 @@ export default function AdminPanel({
                                   <input
                                     type="text"
                                     value={editingRegData.phone}
-                                    onChange={(e) => setEditingRegData(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      let formatted = raw;
+                                      if (!/^[a-zA-ZÀ-ÿ]/.test(raw.trim())) {
+                                        let d = raw.replace(/\D/g, '');
+                                        if (d.startsWith('55') && (d.length === 12 || d.length === 13)) d = d.slice(2);
+                                        if (d.length > 11) d = d.slice(0, 11);
+                                        if (!d) formatted = '';
+                                        else if (d.length <= 2) formatted = `(${d}`;
+                                        else if (d.length <= 6) formatted = `(${d.slice(0, 2)}) ${d.slice(2)}`;
+                                        else if (d.length <= 10) formatted = `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+                                        else formatted = `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
+                                      }
+                                      setEditingRegData(prev => prev ? { ...prev, phone: formatted } : null);
+                                    }}
+                                    placeholder="(99) 99999-9999"
                                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500"
                                   />
                                 </div>
